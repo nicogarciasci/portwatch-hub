@@ -57,6 +57,7 @@ const DEFAULTS = {
   dexnomSource: '',
   dexnomRuntime: '',
   dexnomInstallDir: '',
+  msvcDir: '',
   dexnomRayTracing: false,
 };
 
@@ -69,6 +70,7 @@ const MAIN_I18N = {
     chooseGameExe: 'Escolha o executável do GTA VI (Xbox Series X|S)',
     chooseForkFolder: 'Escolha a pasta da fork DexNom',
     chooseInstallDir: 'Escolha onde instalar o runtime DexNom',
+    chooseMsvcDir: 'Escolha a pasta do Visual Studio Build Tools',
     downloadFailed: 'Não foi possível baixar o projeto.',
     extractFailed: 'O download terminou, mas não foi possível extrair o ZIP.',
     invalidRepo: 'Repositório inválido.',
@@ -79,6 +81,7 @@ const MAIN_I18N = {
     chooseGameExe: 'Choose the GTA VI executable (Xbox Series X|S)',
     chooseForkFolder: 'Choose the DexNom fork folder',
     chooseInstallDir: 'Choose where to install the DexNom runtime',
+    chooseMsvcDir: 'Choose the Visual Studio Build Tools folder',
     downloadFailed: 'Could not download the project.',
     extractFailed: 'The download finished, but the ZIP could not be extracted.',
     invalidRepo: 'Invalid repository.',
@@ -89,6 +92,7 @@ const MAIN_I18N = {
     chooseGameExe: 'Elige el ejecutable de GTA VI (Xbox Series X|S)',
     chooseForkFolder: 'Elige la carpeta de la fork DexNom',
     chooseInstallDir: 'Elige dónde instalar el runtime DexNom',
+    chooseMsvcDir: 'Elige la carpeta de Visual Studio Build Tools',
     downloadFailed: 'No se pudo descargar el proyecto.',
     extractFailed: 'La descarga terminó, pero no se pudo extraer el ZIP.',
     invalidRepo: 'Repositorio inválido.',
@@ -141,7 +145,7 @@ function sanitizeConfig(patch) {
   if (next.downloadsDir != null && typeof next.downloadsDir !== 'string') {
     next.downloadsDir = DEFAULT_DOWNLOADS;
   }
-  for (const key of ['gameExe', 'dexnomSource', 'dexnomRuntime', 'dexnomInstallDir']) {
+  for (const key of ['gameExe', 'dexnomSource', 'dexnomRuntime', 'dexnomInstallDir', 'msvcDir']) {
     if (next[key] != null && typeof next[key] !== 'string') next[key] = '';
   }
   if (next.dexnomRayTracing != null) next.dexnomRayTracing = Boolean(next.dexnomRayTracing);
@@ -759,17 +763,150 @@ async function checkRust() {
   };
 }
 
+function msvcInfoFromRoot(root, source) {
+  if (!root) return null;
+  const resolved = path.resolve(root);
+  const tools = path.join(resolved, 'VC', 'Tools', 'MSVC');
+  let entries = [];
+  try {
+    entries = fs.readdirSync(tools, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  const versions = entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+  const vcvars = path.join(resolved, 'VC', 'Auxiliary', 'Build', 'vcvars64.bat');
+  for (const version of versions) {
+    const link = path.join(tools, version, 'bin', 'Hostx64', 'x64', 'link.exe');
+    const runtime = path.join(tools, version, 'include', 'vcruntime.h');
+    if (isFile(link) && isFile(runtime)) {
+      return {
+        root: resolved,
+        version,
+        link,
+        vcvars: isFile(vcvars) ? vcvars : '',
+        source,
+      };
+    }
+  }
+  return null;
+}
+
+function msvcRootFromPath(target) {
+  if (!target) return null;
+  let current = path.resolve(target);
+  for (let depth = 0; depth < 10; depth += 1) {
+    const info = msvcInfoFromRoot(current, 'manual');
+    if (info) return info;
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return null;
+}
+
+function vsInstancePaths() {
+  const base = path.join(
+    process.env.ProgramData || 'C:\\ProgramData',
+    'Microsoft',
+    'VisualStudio',
+    'Packages',
+    '_Instances'
+  );
+  let entries = [];
+  try {
+    entries = fs.readdirSync(base, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const instances = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const file = path.join(base, entry.name, 'state.json');
+    try {
+      const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const root = data.resolvedInstallationPath || data.installationPath;
+      if (!root) continue;
+      const date = Date.parse(data.installDate || data.updateDate || '') || 0;
+      instances.push({ root, date });
+    } catch {
+      /* estado ilegível: segue para os outros candidatos */
+    }
+  }
+  instances.sort((a, b) => b.date - a.date);
+  return instances.map((item) => item.root);
+}
+
+function windowsSdkInfo() {
+  const roots = [];
+  const seen = new Set();
+  const add = (dir) => {
+    if (!dir) return;
+    const resolved = path.resolve(dir);
+    const key = resolved.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    roots.push(resolved);
+  };
+  const pf86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+  const pf = process.env.ProgramFiles || 'C:\\Program Files';
+  add(process.env.WindowsSdkDir);
+  add(path.join(pf86, 'Windows Kits', '10'));
+  add(path.join(pf, 'Windows Kits', '10'));
+
+  for (const root of roots) {
+    const libRoot = path.join(root, 'Lib');
+    let entries = [];
+    try {
+      entries = fs.readdirSync(libRoot, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    const versions = entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+    for (const version of versions) {
+      const kernel = path.join(libRoot, version, 'um', 'x64', 'kernel32.lib');
+      const ucrt = path.join(libRoot, version, 'ucrt', 'x64', 'ucrt.lib');
+      if (isFile(kernel) && isFile(ucrt)) {
+        return { sdk: true, version, root };
+      }
+    }
+  }
+  return { sdk: false, version: '', root: '' };
+}
+
 async function checkMsvc() {
+  const candidates = [];
+  const seen = new Set();
+  const add = (root, source) => {
+    if (!root) return;
+    let resolved;
+    try {
+      resolved = path.resolve(root);
+    } catch {
+      return;
+    }
+    const key = resolved.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push({ root: resolved, source });
+  };
+
+  if (cfg.msvcDir) add(cfg.msvcDir, 'manual');
+
   const vswhere = path.join(
     process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)',
     'Microsoft Visual Studio',
     'Installer',
     'vswhere.exe'
   );
-  let installPath = '';
   if (isFile(vswhere)) {
     const result = await execText(vswhere, [
-      '-latest',
+      '-all',
       '-products',
       '*',
       '-requires',
@@ -777,29 +914,58 @@ async function checkMsvc() {
       '-property',
       'installationPath',
     ]);
-    if (result.ok && result.stdout) installPath = result.stdout.split(/\r?\n/)[0];
-  }
-  if (!installPath) {
-    const link = await execText('where.exe', ['link.exe']);
-    if (link.ok && link.stdout) installPath = path.dirname(link.stdout.split(/\r?\n/)[0]);
+    if (result.ok && result.stdout) {
+      for (const line of result.stdout.split(/\r?\n/)) add(line.trim(), 'vswhere');
+    }
   }
 
-  let sdk = false;
-  const sdkRoot = path.join(
-    process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)',
-    'Windows Kits',
-    '10',
-    'Lib'
-  );
-  try {
-    sdk = fs
-      .readdirSync(sdkRoot, { withFileTypes: true })
-      .some((entry) => entry.isDirectory() && isDir(path.join(sdkRoot, entry.name, 'um', 'x64')));
-  } catch {
-    /* SDK não encontrado */
+  for (const root of vsInstancePaths()) add(root, 'state');
+
+  const programDirs = [process.env['ProgramFiles(x86)'], process.env.ProgramFiles].filter(Boolean);
+  for (const base of programDirs) {
+    for (const year of ['2022', '2019']) {
+      for (const edition of ['BuildTools', 'Community', 'Professional', 'Enterprise']) {
+        add(path.join(base, 'Microsoft Visual Studio', year, edition), 'path');
+      }
+    }
   }
 
-  return { ok: Boolean(installPath), path: installPath, sdk };
+  if (process.env.VSINSTALLDIR) add(process.env.VSINSTALLDIR, 'env');
+  if (process.env.VCINSTALLDIR) add(path.dirname(path.resolve(process.env.VCINSTALLDIR)), 'env');
+  if (process.env.VCToolsInstallDir) {
+    add(path.resolve(process.env.VCToolsInstallDir, '..', '..', '..', '..'), 'env');
+  }
+
+  const whereLink = await execText('where.exe', ['link.exe']);
+  if (whereLink.ok && whereLink.stdout) {
+    for (const line of whereLink.stdout.split(/\r?\n/)) {
+      const dir = path.dirname(line.trim());
+      const match = /^(.*)\\VC\\Tools\\MSVC\\[^\\]+\\bin\\Hostx64\\x64$/i.exec(dir);
+      if (match) add(match[1], 'path');
+    }
+  }
+
+  let best = null;
+  for (const candidate of candidates) {
+    const info = msvcInfoFromRoot(candidate.root, candidate.source);
+    if (info) {
+      best = info;
+      break;
+    }
+  }
+
+  const sdk = windowsSdkInfo();
+  return {
+    ok: Boolean(best),
+    path: best ? best.root : '',
+    link: best ? best.link : '',
+    vcvars: best ? best.vcvars : '',
+    version: best ? best.version : '',
+    source: best ? best.source : '',
+    sdk: sdk.sdk,
+    sdkVersion: sdk.version,
+    sdkRoot: sdk.root,
+  };
 }
 
 function freeSpaceGB(dir) {
@@ -831,6 +997,7 @@ async function dexnomStatus() {
     rust,
     msvc,
     diskFreeGB: freeSpaceGB(installDir || source || cfg.downloadsDir || DEFAULT_DOWNLOADS),
+    systemFreeGB: freeSpaceGB(process.env.SystemDrive ? `${process.env.SystemDrive}\\` : 'C:\\'),
     setup: dexnomSetup
       ? { running: true, startedAt: dexnomSetup.startedAt, lines: dexnomSetup.lines.slice(-600) }
       : { running: false },
@@ -973,7 +1140,36 @@ try {
   });
 }
 
-function startDexnomSetup(source, gameExe, installDir) {
+function mergeEnv(base, extra) {
+  const merged = { ...base };
+  const keys = new Map(Object.keys(merged).map((key) => [key.toLowerCase(), key]));
+  for (const [key, value] of Object.entries(extra || {})) {
+    const lower = key.toLowerCase();
+    const previous = keys.get(lower);
+    if (previous && previous !== key) delete merged[previous];
+    merged[key] = value;
+    keys.set(lower, key);
+  }
+  return merged;
+}
+
+async function vcvarsEnvironment(vcvars) {
+  if (!vcvars || !isFile(vcvars)) return null;
+  const result = await execText(
+    'cmd.exe',
+    ['/d', '/c', 'call', vcvars, '&&', 'set'],
+    30000
+  );
+  if (!result.ok || !result.stdout) return null;
+  const env = {};
+  for (const line of result.stdout.split(/\r?\n/)) {
+    const index = line.indexOf('=');
+    if (index > 0) env[line.slice(0, index)] = line.slice(index + 1);
+  }
+  return Object.keys(env).length ? env : null;
+}
+
+async function startDexnomSetup(source, gameExe, installDir, msvc) {
   ensureDirs();
   const setup = path.join(source, DEXNOM_SETUP_FILE);
   try {
@@ -1000,10 +1196,22 @@ function startDexnomSetup(source, gameExe, installDir) {
     '-InstallDir',
     installDir,
   ];
+  let env = { ...process.env };
+  if (msvc && msvc.vcvars) {
+    const extra = await vcvarsEnvironment(msvc.vcvars);
+    if (extra) {
+      env = mergeEnv(process.env, extra);
+    } else {
+      appendSetupLog('AVISO: nao foi possivel carregar o ambiente do Build Tools.');
+    }
+  } else if (msvc) {
+    appendSetupLog('AVISO: vcvars64.bat nao encontrado; usando o PATH atual.');
+  }
+
   const child = spawn('powershell.exe', args, {
     cwd: source,
     windowsHide: true,
-    env: { ...process.env },
+    env,
   });
 
   const run = { child, canceled: false, startedAt: Date.now(), lines: [] };
@@ -1240,8 +1448,27 @@ ipcMain.handle('dexnom:choose-install', async () => {
   return { ok: true, status: await dexnomStatus() };
 });
 
+ipcMain.handle('dexnom:choose-msvc', async () => {
+  const result = await dialog.showOpenDialog(win, {
+    title: mt('chooseMsvcDir'),
+    properties: ['openDirectory'],
+    defaultPath: cfg.msvcDir || process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)',
+  });
+  if (result.canceled || !result.filePaths.length) {
+    return { ok: false, canceled: true, status: await dexnomStatus() };
+  }
+  const info = msvcRootFromPath(result.filePaths[0]);
+  if (!info) return { ok: false, error: 'msvc', status: await dexnomStatus() };
+  saveConfig({ msvcDir: info.root });
+  return { ok: true, status: await dexnomStatus() };
+});
+
 ipcMain.handle('dexnom:install-msvc', () => {
   if (msvcInstall) return { ok: false, error: 'busy' };
+  const systemFreeGB = freeSpaceGB(process.env.SystemDrive ? `${process.env.SystemDrive}\\` : 'C:\\');
+  if (systemFreeGB != null && systemFreeGB < 6) {
+    return { ok: false, error: 'disk', freeGB: systemFreeGB };
+  }
   try {
     startMsvcInstall();
     return { ok: true, started: true };
@@ -1263,7 +1490,7 @@ ipcMain.handle('dexnom:prepare', async () => {
     return { ok: false, error: 'disk', freeGB: status.diskFreeGB };
   }
   try {
-    startDexnomSetup(status.source.dir, status.gameExe, status.installDir);
+    await startDexnomSetup(status.source.dir, status.gameExe, status.installDir, status.msvc);
     return { ok: true, started: true };
   } catch (err) {
     return { ok: false, error: 'spawn', detail: String(err.message || err) };

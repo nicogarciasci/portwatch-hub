@@ -88,15 +88,15 @@ A aba **Jogar** integra o **DexNom Runtime**, fork do VIctory para placas AMD Ra
 
 - Windows 10/11 64-bit com driver Direct3D 12 atualizado.
 - Rust (rustup + Cargo): <https://rustup.rs/>.
-- Visual Studio Build Tools com a carga **Desenvolvimento para desktop com C++** e o **Windows SDK**. Se faltar, a aba **Jogar** mostra o botão **Instalar Build Tools**: o launcher baixa o instalador oficial da Microsoft, confere a assinatura digital, pede permissão de administrador (UAC) e instala a carga C++ com o Windows SDK. São vários GB e pode levar de 10 a 30 minutos.
+- Visual Studio Build Tools com a carga **Desenvolvimento para desktop com C++** e o **Windows SDK**. Se o Build Tools já estiver instalado em outro disco, o launcher detecta e usa essa instalação, inclusive quando o `vswhere` não a lista; se a detecção falhar, use **Localizar Build Tools**. Se faltar, o botão **Instalar Build Tools** baixa o instalador oficial da Microsoft, confere a assinatura digital, pede permissão de administrador (UAC) e instala a carga C++ com o Windows SDK. A instalação automática usa o C: e precisa de cerca de 6 GB livres no C:, mesmo que o runtime esteja em outro disco.
 - Pelo menos 5 GB livres no disco da fork.
 - GPU compatível com mesh shaders e Shader Model 6.6. O DexNom foi testado em Radeon RX 7900 XTX; placas mais antigas podem não rodar.
 
 **Como usar**
 
 1. Baixe a fork DexNom na aba **Downloads** (ou escolha a pasta de uma cópia já extraída).
-2. Abra **Jogar** e confira se a fork e o executável do jogo foram detectados. Use **Escolher pasta** e **Escolher .exe** se precisar. A pasta de instalação padrão é `%LOCALAPPDATA%\DexNom Runtime`; use **Escolher pasta** na linha **Pasta de instalação** para instalar em outro disco ou pasta.
-3. Clique em **Preparar / atualizar**. O launcher roda o `Setup-DexNomRuntime.ps1` da fork com a pasta escolhida, mostra o log ao vivo e instala o runtime nessa pasta. Se o Build Tools não for detectado, use **Instalar Build Tools** na seção de pré-requisitos e acompanhe o andamento na própria aba; o log fica em `data\logs\msvc-install.log`.
+2. Abra **Jogar** e confira se a fork e o executável do jogo foram detectados. Use **Escolher pasta** e **Escolher .exe** se precisar. A pasta de instalação padrão é `%LOCALAPPDATA%\DexNom Runtime`; use **Escolher pasta** na linha **Pasta de instalação** para instalar em outro disco ou pasta. Essa pasta é só do runtime: o Build Tools é detectado separadamente.
+3. Clique em **Preparar / atualizar**. O launcher roda o `Setup-DexNomRuntime.ps1` da fork com a pasta escolhida, mostra o log ao vivo e instala o runtime nessa pasta. Se o Build Tools não for detectado, use **Localizar Build Tools** para apontar uma instalação existente ou **Instalar Build Tools** para baixar; o andamento aparece na própria aba e o log fica em `data\logs\msvc-install.log`.
 4. Quando o runtime estiver pronto, clique em **Jogar**. O botão vira **Parar** enquanto o jogo estiver aberto. O ray tracing experimental pode ser ativado pelo interruptor `--rt`. Na tela inicial, **EXECUTAR** fica ao lado de **VER CORRIDA** e abre o jogo direto; se ainda faltar configuração, ele leva para esta aba.
 
 O log da preparação fica em `data\logs\dexnom-setup.log`. A fork é código de terceiros: compilar e executar roda código no seu PC. Use apenas com uma cópia legal do jogo.
@@ -194,8 +194,9 @@ O ícone da janela e do atalho é `app\assets\icon.ico`. Para trocar, substitua 
 - **Lista de forks vazia:** a API do GitHub pode ter atingido o limite. Preencha um token em **Ajustes → Tracker** e atualize.
 - **Download falhou:** confira a conexão e o espaço em disco. O detalhe do erro aparece no diálogo.
 - **O ZIP não extraiu:** feche o arquivo no Explorer e tente de novo; o download é mantido na pasta de downloads.
-- **“Faltam pré-requisitos” ao preparar o DexNom:** instale o Rust e o Visual Studio Build Tools com a carga C++ e o Windows SDK; clique em **Verificar** depois. Use **Instalar Build Tools** para a instalação automática ou o comando `winget` sugerido na tela. Se a instalação automática terminar sem detectar o Build Tools, reinicie o Windows e use **Verificar** de novo.
-- **A instalação do Build Tools falhou:** abra o log em `data\logs\msvc-install.log` e confira a conexão, o espaço livre (cerca de 5 GB) e se a janela do UAC foi aceita. O instalador oficial também pode ser aberto manualmente pelo botão **Abrir Build Tools**.
+- **“Faltam pré-requisitos” ao preparar o DexNom:** instale o Rust e o Visual Studio Build Tools com a carga C++ e o Windows SDK; clique em **Verificar** depois. Se o Build Tools já existe, use **Localizar Build Tools** e escolha a pasta que contém `VC\Tools\MSVC`. Para a instalação automática, use **Instalar Build Tools** ou o comando `winget` sugerido na tela. Se a instalação automática terminar sem detectar o Build Tools, reinicie o Windows e use **Verificar** de novo.
+- **Build Tools instalado em outro disco mas não detectado:** use **Localizar Build Tools** e aponte a pasta da instalação (por exemplo, `D:\VSBuildTools`). O launcher passa a usar o `vcvars64.bat` dessa instalação, sem baixar nada. Isso também funciona quando o `vswhere` não lista a instalação.
+- **A instalação do Build Tools falhou:** abra o log em `data\logs\msvc-install.log` e confira a conexão, o espaço livre (cerca de 6 GB no C:) e se a janela do UAC foi aceita. O instalador oficial também pode ser aberto manualmente pelo botão **Abrir Build Tools**.
 - **O DexNom não inicia o jogo:** confirme que o runtime foi preparado, que o `.exe` apontado é o da instalação correta e que a GPU suporta mesh shaders/Shader Model 6.6. Veja o log em `data\logs\dexnom-setup.log` e os diagnósticos do runtime em `%LOCALAPPDATA%\DexNom Runtime\logs`.
 - **O launcher não abre:** rode `INICIAR.cmd`; ele mostra o que falta (Node.js, npm ou dependências) e tenta instalar. Se o atalho estiver apontando para uma pasta antiga, rode `CRIAR-ATALHO.cmd` de novo.
 

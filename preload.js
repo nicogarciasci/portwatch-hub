@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('portwatch', {
   dexnomChooseGame: () => ipcRenderer.invoke('dexnom:choose-game'),
   dexnomChooseSource: () => ipcRenderer.invoke('dexnom:choose-source'),
   dexnomChooseInstall: () => ipcRenderer.invoke('dexnom:choose-install'),
+  dexnomChooseMsvc: () => ipcRenderer.invoke('dexnom:choose-msvc'),
   dexnomInstallMsvc: () => ipcRenderer.invoke('dexnom:install-msvc'),
   dexnomPrepare: () => ipcRenderer.invoke('dexnom:prepare'),
   dexnomCancel: () => ipcRenderer.invoke('dexnom:cancel'),

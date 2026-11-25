@@ -40,7 +40,7 @@ const VIEW_META = {
 const state = {
   config: { ...DEFAULTS },
   defaults: { ...DEFAULTS },
-  appVersion: '2.2.0',
+  appVersion: '2.2.1',
   site: SITE_URL,
   trackerRepo: TRACKER_GITHUB,
   tracker: null,
@@ -1315,11 +1315,14 @@ function renderPlay() {
     rustOk ? 'ok' : 'warn',
     rustOk ? rust.version || t('play.detected') : t('play.rustMissing')
   );
-  dexnomCheck(
-    'playCheckMsvc',
-    msvcOk ? 'ok' : 'warn',
-    msvcOk ? msvc.path : msvc && msvc.ok && !msvc.sdk ? t('play.msvcNoSdk') : t('play.msvcMissing')
-  );
+  const msvcText = msvcOk
+    ? [msvc.path, msvc.version ? `MSVC ${msvc.version}` : '', msvc.sdkVersion ? `SDK ${msvc.sdkVersion}` : '']
+        .filter(Boolean)
+        .join(' · ')
+    : msvc && msvc.ok && !msvc.sdk
+      ? t('play.msvcNoSdk')
+      : t('play.msvcMissing');
+  dexnomCheck('playCheckMsvc', msvcOk ? 'ok' : 'warn', msvcText);
   dexnomCheck(
     'playCheckRuntime',
     runtime ? 'ok' : 'warn',
@@ -1348,6 +1351,11 @@ function renderPlay() {
       installBtn.disabled = msvcInstalling;
       const span = installBtn.querySelector('span');
       if (span) span.textContent = msvcInstalling ? t('play.installingMsvc') : t('play.installMsvc');
+    }
+    const locateBtn = $('#playLocateMsvc');
+    if (locateBtn) {
+      locateBtn.hidden = !missingMsvc;
+      locateBtn.disabled = msvcInstalling;
     }
     const msvcState = $('#playMsvcState');
     if (msvcState) {
@@ -1463,12 +1471,29 @@ async function chooseDexnomInstall() {
   renderPlay();
 }
 
+async function chooseMsvcDir() {
+  if (!IS_DESKTOP) return;
+  const result = await window.portwatch.dexnomChooseMsvc();
+  if (result && result.status) state.dexnom.status = result.status;
+  if (result && result.ok) {
+    toast(t('play.msvcLocated'), 'ok');
+  } else if (result && !result.canceled) {
+    toast(t('play.msvcInvalid'), 'warn', 6000);
+  }
+  renderPlay();
+}
+
 function installMsvcTools() {
   if (!IS_DESKTOP || state.dexnom.msvcInstalling) return;
+  const free = state.dexnom.status && state.dexnom.status.systemFreeGB;
+  const detail =
+    free == null
+      ? t('play.msvcInstallDetail')
+      : `${t('play.msvcInstallDetail')}\n${t('play.msvcSystemFree', { free })}`;
   showDialog({
     title: t('play.msvcInstallTitle'),
     message: t('play.msvcInstallMsg'),
-    detail: t('play.msvcInstallDetail'),
+    detail,
     confirmLabel: t('play.installNow'),
     cancelLabel: t('play.cancel'),
     onConfirm: startMsvcInstall,
@@ -1488,6 +1513,13 @@ async function startMsvcInstall() {
     renderPlay();
     if (result && result.error === 'busy') {
       toast(t('play.msvcBusy'), 'warn');
+      return;
+    }
+    if (result && result.error === 'disk') {
+      showDialog({
+        title: t('play.msvcInstallFailed'),
+        message: t('play.msvcInstallDisk', { free: result.freeGB == null ? '—' : result.freeGB }),
+      });
       return;
     }
     showDialog({
@@ -1694,6 +1726,7 @@ function bindPlay() {
   on('#playChooseInstall', chooseDexnomInstall);
   on('#playPrepare', prepareDexnom);
   on('#playInstallMsvc', installMsvcTools);
+  on('#playLocateMsvc', chooseMsvcDir);
   on('#playMsvcLog', () => openDexnomPath('msvc-log'));
   on('#playCancelSetup', cancelDexnomSetup);
   on('#playLaunch', toggleDexnomGame);
