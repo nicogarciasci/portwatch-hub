@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const https = require('node:https');
 const { execFile, spawn } = require('node:child_process');
 const { createHardware } = require('./hardware-main');
+const savesStore = require('./saves');
 
 // Permite que as rádios comecem junto com o launcher, sem exigir um clique
 // antes (o Chromium bloqueia áudio automático por padrão).
@@ -71,6 +72,9 @@ const MAIN_I18N = {
     chooseForkFolder: 'Escolha a pasta da fork DexNom',
     chooseInstallDir: 'Escolha onde instalar o runtime DexNom',
     chooseMsvcDir: 'Escolha a pasta do Visual Studio Build Tools',
+    chooseSaveZip: 'Escolha o ZIP do save do jogo',
+    chooseSaveFolder: 'Escolha a pasta do save do jogo',
+    saveZipFilter: 'Save do jogo (ZIP)',
     downloadFailed: 'Não foi possível baixar o projeto.',
     extractFailed: 'O download terminou, mas não foi possível extrair o ZIP.',
     invalidRepo: 'Repositório inválido.',
@@ -82,6 +86,9 @@ const MAIN_I18N = {
     chooseForkFolder: 'Choose the DexNom fork folder',
     chooseInstallDir: 'Choose where to install the DexNom runtime',
     chooseMsvcDir: 'Choose the Visual Studio Build Tools folder',
+    chooseSaveZip: 'Choose the game save ZIP',
+    chooseSaveFolder: 'Choose the game save folder',
+    saveZipFilter: 'Game save (ZIP)',
     downloadFailed: 'Could not download the project.',
     extractFailed: 'The download finished, but the ZIP could not be extracted.',
     invalidRepo: 'Invalid repository.',
@@ -93,6 +100,9 @@ const MAIN_I18N = {
     chooseForkFolder: 'Elige la carpeta de la fork DexNom',
     chooseInstallDir: 'Elige dónde instalar el runtime DexNom',
     chooseMsvcDir: 'Elige la carpeta de Visual Studio Build Tools',
+    chooseSaveZip: 'Elige el ZIP del save del juego',
+    chooseSaveFolder: 'Elige la carpeta del save del juego',
+    saveZipFilter: 'Save del juego (ZIP)',
     downloadFailed: 'No se pudo descargar el proyecto.',
     extractFailed: 'La descarga terminó, pero no se pudo extraer el ZIP.',
     invalidRepo: 'Repositorio inválido.',
@@ -597,6 +607,7 @@ function openDownloaded(name) {
 let dexnomSetup = null;
 let dexnomGame = null;
 let msvcInstall = null;
+let savesBusy = false;
 
 function isFile(target) {
   try {
@@ -1009,6 +1020,103 @@ async function dexnomStatus() {
     msvcLogExists: fs.existsSync(MSVC_INSTALL_LOG),
     rt: Boolean(cfg.dexnomRayTracing),
     logPath: DEXNOM_SETUP_LOG,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Saves do jogo (DexNom)
+// ---------------------------------------------------------------------------
+
+const DEXNOM_TITLE_FALLBACK = '7952987A';
+
+function dexnomTitleId() {
+  const exe = dexnomGameExe();
+  if (!exe) return DEXNOM_TITLE_FALLBACK;
+  const file = path.join(path.dirname(exe), 'MicrosoftGame.config');
+  try {
+    const text = fs.readFileSync(file, 'utf8');
+    const match = /<TitleId>\s*([0-9a-f]{8})\s*<\/TitleId>/i.exec(text);
+    if (match) return match[1].toUpperCase();
+  } catch {
+    /* config ausente: usa o TitleId conhecido */
+  }
+  return DEXNOM_TITLE_FALLBACK;
+}
+
+function dexnomSavesPaths() {
+  const installDir = dexnomInstallTarget();
+  const titleId = dexnomTitleId();
+  const titleDir = path.join(installDir, 'state', titleId);
+  const savesDir = path.join(titleDir, 'saves');
+  const backupsDir = path.join(titleDir, 'saves-backups');
+  const xuid = savesStore.detectXuid(savesDir);
+  return {
+    installDir,
+    titleId,
+    titleDir,
+    savesDir,
+    backupsDir,
+    xuid,
+    userDir: path.join(savesDir, xuid),
+  };
+}
+
+async function dexnomGameActive() {
+  if (dexnomGame) return true;
+  const runtime = dexnomRuntime();
+  if (!runtime) return false;
+  const script =
+    "Get-Process -Name victory,victory-play -ErrorAction SilentlyContinue | ForEach-Object { $_.Path }";
+  const result = await execText(
+    'powershell.exe',
+    ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script],
+    8000
+  );
+  if (!result.ok || !result.stdout) return false;
+  const targets = new Set([
+    runtime.exe.toLowerCase(),
+    path.join(runtime.dir, DEXNOM_PLAYER).toLowerCase(),
+  ]);
+  return result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim().toLowerCase())
+    .some((line) => targets.has(line));
+}
+
+async function savesStatus() {
+  const paths = dexnomSavesPaths();
+  const runtime = dexnomRuntime();
+  const gameRunning = await dexnomGameActive();
+  const configs = savesStore.listConfigs(paths.savesDir, paths.xuid);
+  const backups = savesStore.listBackups(paths.backupsDir);
+  let totalBytes = 0;
+  let containerCount = 0;
+  let modified = 0;
+  for (const config of configs) {
+    totalBytes += config.bytes;
+    containerCount += config.containers.length;
+    modified = Math.max(modified, config.modified);
+  }
+  return {
+    ok: true,
+    titleId: paths.titleId,
+    installDir: paths.installDir,
+    savesDir: paths.savesDir,
+    backupsDir: paths.backupsDir,
+    xuid: paths.xuid,
+    exists: isDir(paths.savesDir),
+    runtime: runtime ? { dir: runtime.dir, exe: runtime.exe } : null,
+    gameExe: dexnomGameExe(),
+    gameRunning,
+    setupRunning: Boolean(dexnomSetup),
+    busy: savesBusy,
+    configs,
+    backups,
+    totalBytes,
+    containerCount,
+    modified,
+    quotaBytes: savesStore.SAVE_MAX_BYTES,
+    maxBackups: savesStore.SAVE_BACKUP_LIMIT,
   };
 }
 
@@ -1506,6 +1614,7 @@ ipcMain.handle('dexnom:cancel', () => {
 
 ipcMain.handle('dexnom:launch', async () => {
   if (dexnomGame) return { ok: false, error: 'running' };
+  if (savesBusy) return { ok: false, error: 'saves' };
   const runtime = dexnomRuntime();
   if (!runtime) return { ok: false, error: 'runtime' };
   const gameExe = dexnomGameExe();
@@ -1569,6 +1678,105 @@ ipcMain.handle('dexnom:open', async (_event, kind) => {
     const target = kind === 'source' ? findDexnomSource() : kind === 'runtime' ? dexnomRuntime()?.dir : '';
     if (!target) return { ok: false, missing: true };
     if (!fs.existsSync(target)) return { ok: false, missing: true };
+    const error = await shell.openPath(target);
+    return error ? { ok: false, error } : { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err.message || err) };
+  }
+});
+
+ipcMain.handle('saves:status', () => savesStatus());
+
+ipcMain.handle('saves:install', async (_event, kind) => {
+  if (savesBusy) return { ok: false, error: 'busy' };
+  if (dexnomSetup) return { ok: false, error: 'setup' };
+  if (kind !== 'zip' && kind !== 'folder') return { ok: false, error: 'format' };
+  if (await dexnomGameActive()) {
+    return { ok: false, error: 'running', status: await savesStatus() };
+  }
+
+  const options = {
+    title: kind === 'zip' ? mt('chooseSaveZip') : mt('chooseSaveFolder'),
+    defaultPath: cfg.downloadsDir || DEFAULT_DOWNLOADS,
+  };
+  if (kind === 'zip') {
+    options.properties = ['openFile'];
+    options.filters = [{ name: mt('saveZipFilter'), extensions: ['zip'] }];
+  } else {
+    options.properties = ['openDirectory'];
+  }
+
+  const picked = await dialog.showOpenDialog(win, options);
+  if (picked.canceled || !picked.filePaths.length) {
+    return { ok: false, canceled: true, status: await savesStatus() };
+  }
+  if (await dexnomGameActive()) {
+    return { ok: false, error: 'running', status: await savesStatus() };
+  }
+
+  const paths = dexnomSavesPaths();
+  if (!paths.installDir) {
+    return { ok: false, error: 'install', status: await savesStatus() };
+  }
+
+  savesBusy = true;
+  let result;
+  try {
+    result = await savesStore.installSave(paths, picked.filePaths[0], { tmpDir: TMP_DIR });
+  } catch (err) {
+    result = { ok: false, error: 'copy', detail: String(err.message || err) };
+  } finally {
+    savesBusy = false;
+  }
+  return { ...result, status: await savesStatus() };
+});
+
+ipcMain.handle('saves:delete', async () => {
+  if (savesBusy) return { ok: false, error: 'busy' };
+  if (dexnomSetup) return { ok: false, error: 'setup' };
+  if (await dexnomGameActive()) {
+    return { ok: false, error: 'running', status: await savesStatus() };
+  }
+  savesBusy = true;
+  let result;
+  try {
+    result = savesStore.deleteSaves(dexnomSavesPaths(), {
+      backupLimit: savesStore.SAVE_BACKUP_LIMIT,
+    });
+  } catch (err) {
+    result = { ok: false, error: 'copy', detail: String(err.message || err) };
+  } finally {
+    savesBusy = false;
+  }
+  return { ...result, status: await savesStatus() };
+});
+
+ipcMain.handle('saves:restore', async (_event, name) => {
+  if (savesBusy) return { ok: false, error: 'busy' };
+  if (dexnomSetup) return { ok: false, error: 'setup' };
+  if (await dexnomGameActive()) {
+    return { ok: false, error: 'running', status: await savesStatus() };
+  }
+  savesBusy = true;
+  let result;
+  try {
+    result = savesStore.restoreSaves(dexnomSavesPaths(), name, {
+      backupLimit: savesStore.SAVE_BACKUP_LIMIT,
+    });
+  } catch (err) {
+    result = { ok: false, error: 'copy', detail: String(err.message || err) };
+  } finally {
+    savesBusy = false;
+  }
+  return { ...result, status: await savesStatus() };
+});
+
+ipcMain.handle('saves:open', async (_event, kind) => {
+  if (kind !== 'saves' && kind !== 'backups') return { ok: false, error: 'format' };
+  const paths = dexnomSavesPaths();
+  const target = kind === 'backups' ? paths.backupsDir : paths.savesDir;
+  try {
+    fs.mkdirSync(target, { recursive: true });
     const error = await shell.openPath(target);
     return error ? { ok: false, error } : { ok: true };
   } catch (err) {

@@ -33,6 +33,7 @@ const VIEW_META = {
   race: { kickerKey: 'view.race.kicker', titleKey: 'view.race.title', footer: false },
   downloads: { kickerKey: 'view.downloads.kicker', titleKey: 'view.downloads.title', footer: false },
   hardware: { kickerKey: 'view.hardware.kicker', titleKey: 'view.hardware.title', footer: false },
+  saves: { kickerKey: 'view.saves.kicker', titleKey: 'view.saves.title', footer: false },
   settings: { kickerKey: 'view.settings.kicker', titleKey: 'view.settings.title', footer: true },
   about: { kickerKey: 'view.about.kicker', titleKey: 'view.about.title', footer: false },
 };
@@ -40,7 +41,7 @@ const VIEW_META = {
 const state = {
   config: { ...DEFAULTS },
   defaults: { ...DEFAULTS },
-  appVersion: '2.2.1',
+  appVersion: '2.3.0',
   site: SITE_URL,
   trackerRepo: TRACKER_GITHUB,
   tracker: null,
@@ -63,6 +64,11 @@ const state = {
     msvcLogStarted: false,
     msvcStage: '',
     log: [],
+  },
+  saves: {
+    status: null,
+    loading: false,
+    busy: false,
   },
   dlQuery: '',
   filter: 'all',
@@ -600,6 +606,7 @@ function renderAllData() {
   renderRace();
   renderDownloads();
   renderPlay();
+  renderSaves();
   renderAbout();
 }
 
@@ -1663,6 +1670,7 @@ function handleDexnomGame(payload) {
     toast(t('play.closedCode', { code: payload.code }), 'warn');
   }
   renderPlay();
+  if (activeView === 'saves') loadSavesStatus();
 }
 
 function handleDexnomMsvc(payload) {
@@ -1771,6 +1779,352 @@ function bindPlay() {
 }
 
 /* =========================================================================
+   SAVES DO JOGO
+   ========================================================================= */
+
+function savesDate(ms) {
+  return ms ? fmtDate(new Date(ms).toISOString()) : '—';
+}
+
+function backupLabel(name) {
+  const match = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})-(install|delete|restore)/.exec(
+    name || ''
+  );
+  if (!match) return name || '';
+  return `${t(`saves.backup.${match[7]}`)} · ${match[3]}/${match[2]} ${match[4]}:${match[5]}`;
+}
+
+function savesEmptyNote(text) {
+  const note = document.createElement('p');
+  note.className = 'empty-note';
+  note.textContent = text;
+  return note;
+}
+
+function savesConfigItem(config) {
+  const item = document.createElement('div');
+  item.className = 'saves-item';
+
+  const main = document.createElement('div');
+  main.className = 'saves-item-main';
+  const title = document.createElement('b');
+  title.textContent = config.name || 'default';
+  const meta = document.createElement('small');
+  meta.textContent = `${t('saves.containers', { count: config.containers.length })} · ${fmtBytes(
+    config.bytes
+  )} · ${savesDate(config.modified)}`;
+  main.append(title, meta);
+
+  if (config.containers.length) {
+    const detail = document.createElement('small');
+    detail.className = 'saves-item-detail';
+    detail.textContent = config.containers.map((container) => container.name).join(' · ');
+    detail.title = detail.textContent;
+    main.appendChild(detail);
+  }
+
+  item.appendChild(main);
+  return item;
+}
+
+function savesBackupItem(backup) {
+  const item = document.createElement('div');
+  item.className = 'saves-item';
+
+  const main = document.createElement('div');
+  main.className = 'saves-item-main';
+  const title = document.createElement('b');
+  title.textContent = backupLabel(backup.name);
+  const meta = document.createElement('small');
+  meta.textContent = `${fmtBytes(backup.bytes)} · ${savesDate(backup.modified)}`;
+  main.append(title, meta);
+
+  const restore = document.createElement('button');
+  restore.type = 'button';
+  restore.className = 'mini-btn';
+  restore.textContent = t('saves.restore');
+  restore.disabled =
+    state.saves.busy || Boolean(state.saves.status && state.saves.status.gameRunning);
+  restore.addEventListener('click', () => restoreGameSave(backup.name));
+
+  item.append(main, restore);
+  return item;
+}
+
+function renderSaves() {
+  const status = state.saves.status;
+  const busy = state.saves.busy;
+  const running = Boolean(status && status.gameRunning);
+  const setup = Boolean(status && status.setupRunning);
+  const runtime = status && status.runtime;
+  const configs = (status && status.configs) || [];
+  const backups = (status && status.backups) || [];
+  const locked = busy || running || setup;
+
+  dexnomCheck(
+    'savesCheckRuntime',
+    runtime ? 'ok' : 'warn',
+    runtime ? runtime.dir : t('saves.runtimeMissing')
+  );
+  dexnomCheck(
+    'savesCheckFolder',
+    status && status.exists ? 'ok' : 'warn',
+    (status && status.savesDir) || t('saves.folderMissing')
+  );
+  dexnomCheck(
+    'savesCheckGame',
+    running ? 'warn' : 'ok',
+    running ? t('saves.gameRunning') : t('saves.gameStopped')
+  );
+
+  const stateEl = $('#savesState');
+  if (stateEl) {
+    let label = t('saves.emptyState');
+    let tone = '';
+    if (!status) {
+      label = t('saves.loadingShort');
+      tone = 'is-warn';
+    } else if (busy) {
+      label = t('saves.working');
+      tone = 'is-warn';
+    } else if (running) {
+      label = t('saves.gameRunningShort');
+      tone = 'is-run';
+    } else if (setup) {
+      label = t('saves.setup');
+      tone = 'is-warn';
+    } else if (status.containerCount) {
+      label = t('saves.ready');
+      tone = 'is-ok';
+    }
+    stateEl.textContent = label;
+    stateEl.className = `play-state${tone ? ` ${tone}` : ''}`;
+  }
+
+  const count = $('#savesCount');
+  if (count) count.textContent = status ? String(status.containerCount) : '—';
+  const size = $('#savesSize');
+  if (size) size.textContent = status ? fmtBytes(status.totalBytes) : '—';
+  const updated = $('#savesUpdated');
+  if (updated) updated.textContent = status ? savesDate(status.modified) : '—';
+  const quota = $('#savesQuota');
+  if (quota) {
+    quota.textContent = status
+      ? t('saves.quota', { used: fmtBytes(status.totalBytes), total: fmtBytes(status.quotaBytes) })
+      : '—';
+  }
+  const note = $('#savesNote');
+  if (note) {
+    note.textContent = status
+      ? `TitleId ${status.titleId} · XUID ${status.xuid}`
+      : '';
+  }
+
+  const list = $('#savesList');
+  if (list) {
+    list.textContent = '';
+    if (!status) list.appendChild(savesEmptyNote(t('saves.loading')));
+    else if (!configs.length) list.appendChild(savesEmptyNote(t('saves.noSaves')));
+    else configs.forEach((config) => list.appendChild(savesConfigItem(config)));
+  }
+
+  const backupList = $('#savesBackupList');
+  if (backupList) {
+    backupList.textContent = '';
+    if (!status) backupList.appendChild(savesEmptyNote(t('saves.loading')));
+    else if (!backups.length) backupList.appendChild(savesEmptyNote(t('saves.noBackups')));
+    else backups.forEach((backup) => backupList.appendChild(savesBackupItem(backup)));
+  }
+  const backupCount = $('#savesBackupCount');
+  if (backupCount) backupCount.textContent = status ? String(backups.length) : '—';
+
+  const states = [
+    ['#savesInstall', !IS_DESKTOP || locked],
+    ['#savesInstallFolder', !IS_DESKTOP || locked],
+    ['#savesDelete', !IS_DESKTOP || locked || !configs.length],
+    ['#savesRefresh', !IS_DESKTOP || busy],
+    ['#savesOpen', !IS_DESKTOP || !status || !status.savesDir],
+    ['#savesOpenBackups', !IS_DESKTOP || !status || !status.backupsDir],
+  ];
+  for (const [selector, disabled] of states) {
+    const button = $(selector);
+    if (button) button.disabled = disabled;
+  }
+}
+
+async function loadSavesStatus() {
+  if (!IS_DESKTOP) {
+    state.saves.status = null;
+    renderSaves();
+    return;
+  }
+  state.saves.loading = true;
+  renderSaves();
+  try {
+    state.saves.status = await window.portwatch.savesStatus();
+  } catch {
+    state.saves.status = null;
+  } finally {
+    state.saves.loading = false;
+    renderSaves();
+  }
+}
+
+function handleSavesError(result) {
+  const code = result && result.error;
+  if (!code) return;
+  if (code === 'running') {
+    toast(t('saves.errRunning'), 'warn', 5000);
+    return;
+  }
+  if (code === 'setup') {
+    toast(t('saves.errSetup'), 'warn');
+    return;
+  }
+  if (code === 'busy') {
+    toast(t('saves.errBusy'), 'warn');
+    return;
+  }
+  if (code === 'empty') {
+    toast(t('saves.errEmpty'), 'warn');
+    return;
+  }
+  if (code === 'container') {
+    toast(t('saves.errContainer'), 'warn', 6500);
+    return;
+  }
+  if (code === 'toobig') {
+    toast(t('saves.errTooBig'), 'warn', 6000);
+    return;
+  }
+  if (code === 'missing') {
+    toast(t('saves.errMissing'), 'warn');
+    return;
+  }
+  showDialog({
+    title: t('saves.failed'),
+    message: code === 'format' || code === 'zip' ? t('saves.errFormat') : t('saves.failedMsg'),
+    detail: (result && result.detail) || '',
+  });
+}
+
+async function installGameSave(kind) {
+  if (!IS_DESKTOP || state.saves.busy) return;
+  state.saves.busy = true;
+  renderSaves();
+  let result = null;
+  try {
+    result = await window.portwatch.savesInstall(kind);
+  } catch {
+    result = { ok: false, error: 'copy' };
+  }
+  state.saves.busy = false;
+  if (result && result.status) state.saves.status = result.status;
+  renderSaves();
+  if (!result || result.canceled) return;
+  if (!result.ok) {
+    handleSavesError(result);
+    return;
+  }
+  toast(
+    t('saves.installedToast', {
+      files: result.files || 0,
+      size: fmtBytes(result.bytes || 0),
+    }),
+    'ok',
+    5000
+  );
+}
+
+function deleteGameSaves() {
+  if (!IS_DESKTOP || state.saves.busy) return;
+  const status = state.saves.status;
+  if (!status || !status.containerCount) {
+    toast(t('saves.nothing'), 'warn');
+    return;
+  }
+  showDialog({
+    title: t('saves.deleteTitle'),
+    message: t('saves.deleteMsg', { count: status.containerCount }),
+    detail: t('saves.deleteDetail'),
+    confirmLabel: t('saves.deleteConfirm'),
+    cancelLabel: t('saves.cancel'),
+    onConfirm: performDeleteSaves,
+  });
+}
+
+async function performDeleteSaves() {
+  if (!IS_DESKTOP || state.saves.busy) return;
+  state.saves.busy = true;
+  renderSaves();
+  let result = null;
+  try {
+    result = await window.portwatch.savesDelete();
+  } catch {
+    result = { ok: false, error: 'copy' };
+  }
+  state.saves.busy = false;
+  if (result && result.status) state.saves.status = result.status;
+  renderSaves();
+  if (!result || !result.ok) {
+    handleSavesError(result);
+    return;
+  }
+  toast(t('saves.deletedToast', { name: backupLabel(result.backup) }), 'ok', 5000);
+}
+
+function restoreGameSave(name) {
+  if (!IS_DESKTOP || state.saves.busy) return;
+  showDialog({
+    title: t('saves.restoreTitle'),
+    message: t('saves.restoreMsg', { name: backupLabel(name) }),
+    detail: t('saves.restoreDetail'),
+    confirmLabel: t('saves.restoreConfirm'),
+    cancelLabel: t('saves.cancel'),
+    onConfirm: () => performRestoreSaves(name),
+  });
+}
+
+async function performRestoreSaves(name) {
+  if (!IS_DESKTOP || state.saves.busy) return;
+  state.saves.busy = true;
+  renderSaves();
+  let result = null;
+  try {
+    result = await window.portwatch.savesRestore(name);
+  } catch {
+    result = { ok: false, error: 'copy' };
+  }
+  state.saves.busy = false;
+  if (result && result.status) state.saves.status = result.status;
+  renderSaves();
+  if (!result || !result.ok) {
+    handleSavesError(result);
+    return;
+  }
+  toast(t('saves.restoredToast'), 'ok', 4000);
+}
+
+async function openSavesFolder(kind) {
+  if (!IS_DESKTOP) return;
+  const result = await window.portwatch.savesOpen(kind);
+  if (!result || !result.ok) toast(t('saves.openFailed'), 'warn');
+}
+
+function bindSaves() {
+  const on = (selector, handler) => {
+    const el = $(selector);
+    if (el) el.addEventListener('click', handler);
+  };
+  on('#savesRefresh', loadSavesStatus);
+  on('#savesInstall', () => installGameSave('zip'));
+  on('#savesInstallFolder', () => installGameSave('folder'));
+  on('#savesDelete', deleteGameSaves);
+  on('#savesOpen', () => openSavesFolder('saves'));
+  on('#savesOpenBackups', () => openSavesFolder('backups'));
+}
+
+/* =========================================================================
    SOBRE
    ========================================================================= */
 
@@ -1840,6 +2194,10 @@ function openView(view) {
   if (view === 'play') {
     renderPlay();
     loadDexnomStatus();
+  }
+  if (view === 'saves') {
+    renderSaves();
+    loadSavesStatus();
   }
   if (view === 'race') {
     renderRace();
@@ -2172,6 +2530,7 @@ async function quickPlay() {
       if (code === 'runtime') toast(t('play.needPrepare'), 'warn');
       else if (code === 'game') toast(t('play.needGame'), 'warn');
       else if (code === 'running') toast(t('play.alreadyRunning'), 'warn');
+      else if (code === 'saves') toast(t('saves.errBusy'), 'warn');
       else toast((result && result.detail) || t('play.launchFail'), 'bad', 5000);
     }
   } catch {
@@ -2423,6 +2782,7 @@ async function boot() {
   bindRace();
   bindDownloads();
   bindPlay();
+  bindSaves();
   bindSettings();
   bindHardware();
   bindAbout();

@@ -26,6 +26,11 @@ contextBridge.exposeInMainWorld('portwatch', {
   dexnomLaunch: () => ipcRenderer.invoke('dexnom:launch'),
   dexnomStop: () => ipcRenderer.invoke('dexnom:stop'),
   dexnomOpen: (kind) => ipcRenderer.invoke('dexnom:open', kind),
+  savesStatus: () => ipcRenderer.invoke('saves:status'),
+  savesInstall: (kind) => ipcRenderer.invoke('saves:install', kind),
+  savesDelete: () => ipcRenderer.invoke('saves:delete'),
+  savesRestore: (name) => ipcRenderer.invoke('saves:restore', name),
+  savesOpen: (kind) => ipcRenderer.invoke('saves:open', kind),
   openPath: (kind) => ipcRenderer.invoke('shell:openPath', kind),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   win: {

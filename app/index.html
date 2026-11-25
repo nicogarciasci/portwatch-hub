@@ -30,6 +30,8 @@
     <symbol id="i-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8.4 7.5-4.8 4.5 4.8 4.5M15.6 7.5l4.8 4.5-4.8 4.5M13.3 4.8l-2.6 14.4"/></symbol>
     <symbol id="i-gamepad" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7.4 8h9.2a3.6 3.6 0 0 1 3.5 2.8l.9 4a2.4 2.4 0 0 1-4.2 2l-1.2-1.5H8.4l-1.2 1.5a2.4 2.4 0 0 1-4.2-2l.9-4A3.6 3.6 0 0 1 7.4 8Z"/><path d="M7.6 10.8v2.6M6.3 12.1h2.6M16 11.4h.01M18 13.2h.01"/></symbol>
     <symbol id="i-stop" viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="2"/></symbol>
+    <symbol id="i-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M5 4.5h11.2L19.5 7.8V19.5H5z"/><path d="M8 4.5v5h7v-5M8 19.5v-5.8h8v5.8"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 7h15M9.5 4.5h5M6.5 7l.9 12.1a1.5 1.5 0 0 0 1.5 1.4h6.2a1.5 1.5 0 0 0 1.5-1.4L17.5 7"/><path d="M10 10.5v6M14 10.5v6"/></symbol>
   </svg>
 
   <!-- ======================= CENA ======================= -->
@@ -324,6 +326,7 @@
       <button class="tab" data-nav="race" data-i18n="nav.race">Corrida</button>
       <button class="tab" data-nav="downloads" data-i18n="nav.downloads">Downloads</button>
       <button class="tab" data-nav="hardware" data-i18n="nav.hardware">Hardware</button>
+      <button class="tab" data-nav="saves" data-i18n="nav.saves">Saves</button>
       <button class="tab" data-nav="settings" data-i18n="nav.settings">Ajustes</button>
       <button class="tab" data-nav="about" data-i18n="nav.about">Sobre</button>
     </nav>
@@ -348,7 +351,7 @@
           <p class="radio-menu-foot" data-i18n="radio.foot">Sintetizador local · todas no mesmo estilo</p>
         </div>
       </div>
-      <span class="build-tag" id="versionTag">v2.2.1</span>
+      <span class="build-tag" id="versionTag">v2.3.0</span>
     </div>
   </footer>
 
@@ -706,6 +709,92 @@
           <p class="fine" data-i18n="hw.fine">Estimativas de hardware inspiradas em dados da comunidade; não medem o desempenho real de cada port.</p>
         </div>
 
+        <!-- SAVES -->
+        <div class="view" data-view="saves">
+          <div class="view-head">
+            <div class="view-head-copy">
+              <p class="view-sub" data-i18n="saves.sub">Instale, faça backup e remova os saves do GTA VI usados pelo runtime DexNom. Os saves ficam fora da pasta do jogo.</p>
+            </div>
+            <div class="view-head-actions">
+              <button class="mini-btn" id="savesRefresh" type="button"><svg class="ic"><use href="#i-refresh"></use></svg><span data-i18n="saves.refresh">Atualizar</span></button>
+            </div>
+          </div>
+
+          <div class="play-grid saves-grid">
+            <section class="play-card">
+              <div class="group-head">
+                <h3 data-i18n="saves.title">Saves do jogo</h3>
+                <span class="play-state" id="savesState">—</span>
+              </div>
+
+              <ul class="play-checks">
+                <li class="play-check" id="savesCheckRuntime">
+                  <span class="play-dot" aria-hidden="true"></span>
+                  <div class="play-check-main">
+                    <b data-i18n="saves.runtime">Runtime DexNom</b>
+                    <small class="play-path" id="savesRuntimePath">—</small>
+                  </div>
+                </li>
+                <li class="play-check" id="savesCheckFolder">
+                  <span class="play-dot" aria-hidden="true"></span>
+                  <div class="play-check-main">
+                    <b data-i18n="saves.folder">Pasta de saves</b>
+                    <small class="play-path" id="savesFolderPath">—</small>
+                  </div>
+                  <button class="mini-btn" id="savesOpen" type="button"><svg class="ic"><use href="#i-folder"></use></svg><span data-i18n="saves.open">Abrir</span></button>
+                </li>
+                <li class="play-check" id="savesCheckGame">
+                  <span class="play-dot" aria-hidden="true"></span>
+                  <div class="play-check-main">
+                    <b data-i18n="saves.game">Jogo</b>
+                    <small class="play-path" id="savesGamePath">—</small>
+                  </div>
+                </li>
+              </ul>
+
+              <div class="saves-stats">
+                <div><b id="savesCount">0</b><span data-i18n="saves.count">saves instalados</span></div>
+                <div><b id="savesSize">—</b><span data-i18n="saves.size">tamanho</span></div>
+                <div><b id="savesUpdated">—</b><span data-i18n="saves.updated">atualizado</span></div>
+              </div>
+
+              <div class="play-actions saves-actions">
+                <button class="btn-primary" id="savesInstall" type="button"><svg class="ic"><use href="#i-download"></use></svg><span data-i18n="saves.install">Instalar save</span></button>
+                <button class="mini-btn" id="savesInstallFolder" type="button"><svg class="ic"><use href="#i-folder"></use></svg><span data-i18n="saves.installFolder">Pasta…</span></button>
+                <button class="mini-btn is-danger" id="savesDelete" type="button"><svg class="ic"><use href="#i-trash"></use></svg><span data-i18n="saves.delete">Deletar</span></button>
+              </div>
+
+              <p class="note" data-i18n="saves.installHint">Aceita um ZIP ou uma pasta com a pasta de saves do DexNom, a pasta do usuário (16 dígitos) ou a pasta de configuração (ex.: default). Um backup automático é criado antes de substituir.</p>
+              <p class="note saves-meta" id="savesNote"></p>
+            </section>
+
+            <section class="play-card">
+              <div class="group-head">
+                <h3 data-i18n="saves.installed">Instalados</h3>
+                <span class="play-state" id="savesQuota">—</span>
+              </div>
+              <div class="saves-list" id="savesList">
+                <p class="empty-note" data-i18n="saves.loading">Lendo saves…</p>
+              </div>
+              <p class="note" data-i18n="saves.listHint">Os saves ficam em &lt;state&gt;/&lt;TitleId&gt;/saves. Instalar substitui os saves atuais; o backup permite voltar.</p>
+            </section>
+          </div>
+
+          <section class="play-card saves-backups">
+            <div class="group-head">
+              <h3 data-i18n="saves.backups">Backups</h3>
+              <div class="saves-backup-actions">
+                <span class="play-state" id="savesBackupCount">0</span>
+                <button class="mini-btn" id="savesOpenBackups" type="button"><svg class="ic"><use href="#i-folder"></use></svg><span data-i18n="saves.openBackups">Abrir pasta</span></button>
+              </div>
+            </div>
+            <div class="saves-list" id="savesBackupList">
+              <p class="empty-note" data-i18n="saves.noBackups">Nenhum backup ainda.</p>
+            </div>
+            <p class="note" data-i18n="saves.backupHint">Até 8 backups são mantidos. Restaurar cria um backup dos saves atuais antes de copiar.</p>
+          </section>
+        </div>
+
         <!-- AJUSTES -->
         <div class="view" data-view="settings">
           <section class="group">
@@ -824,7 +913,7 @@
             <div class="about-mark pw-about-mark"><span>PW</span></div>
             <div class="about-id">
               <p class="kicker" data-i18n="about.kicker">PORTWATCH HUB</p>
-              <h3 id="aboutVersion">v2.2.1</h3>
+              <h3 id="aboutVersion">v2.3.0</h3>
               <p data-i18n-html="about.description">Uma central de mesa para a corrida do <b>PortWatch VI</b>: leaderboard ao vivo, downloads de projetos e forks, e verificação de hardware.</p>
             </div>
           </div>

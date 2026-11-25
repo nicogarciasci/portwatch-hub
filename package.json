@@ -1,7 +1,7 @@
 {
   "name": "portwatch-hub",
   "productName": "PortWatch Hub",
-  "version": "2.2.1",
+  "version": "2.3.0",
   "description": "Central de mesa para a corrida PortWatch VI: tracker ao vivo, downloads de projetos e forks, e verificação de hardware.",
   "main": "main.js",
   "author": "Nicolas Garcia (Nico.SCI)",

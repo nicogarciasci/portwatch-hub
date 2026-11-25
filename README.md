@@ -23,6 +23,7 @@ Se o Windows SmartScreen avisar que o app não tem assinatura, clique em **Mais 
 - **Leaderboard completo:** projetos ranqueados, builds privadas, watchlist e projetos desativados, com filtros por alvo (GTA VI ou camadas gerais) e ordenação por progresso, estrelas ou atividade.
 - **Downloads integrados:** lista todos os projetos públicos do tracker e todos os forks do PortWatch, com busca, progresso e extração automática do ZIP. Ao baixar uma fork, o launcher pergunta em qual pasta você quer salvar.
 - **Jogar com DexNom:** prepara o runtime **DexNom** (fork do VIctory para AMD Radeon) e inicia o GTA VI com a sua cópia local do jogo, com botão **Jogar/Parar**, atalho **Executar** na tela inicial, pasta de instalação configurável, ray tracing opcional e log da preparação.
+- **Saves do jogo:** aba **Saves** ao lado de **Ajustes** para instalar um save em ZIP ou pasta, abrir a pasta do runtime, deletar com backup automático e restaurar qualquer um dos últimos 8 backups.
 - **Hardware:** detecta CPU, GPU, VRAM, RAM e armazenamento, permite simular outras peças e compara o PC com alvos de 1080p a 4K.
 - **Temas:** **Vice City** (padrão) e **Los Santos**, com cenário, cores e rádio próprios.
 - **Trilíngue:** Português (Brasil), English e Español, com escolha na primeira abertura e troca imediata em Ajustes.
@@ -100,6 +101,24 @@ A aba **Jogar** integra o **DexNom Runtime**, fork do VIctory para placas AMD Ra
 4. Quando o runtime estiver pronto, clique em **Jogar**. O botão vira **Parar** enquanto o jogo estiver aberto. O ray tracing experimental pode ser ativado pelo interruptor `--rt`. Na tela inicial, **EXECUTAR** fica ao lado de **VER CORRIDA** e abre o jogo direto; se ainda faltar configuração, ele leva para esta aba.
 
 O log da preparação fica em `data\logs\dexnom-setup.log`. A fork é código de terceiros: compilar e executar roda código no seu PC. Use apenas com uma cópia legal do jogo.
+
+## Saves do jogo
+
+A aba **Saves**, ao lado de **Ajustes**, gerencia os saves que o runtime DexNom usa. Eles **não** ficam na pasta do jogo: o runtime grava em `<Pasta de instalação>\state\<TitleId>\saves`, com uma pasta por usuário (XUID) e uma pasta `default` de configuração.
+
+**Instalar:** clique em **Instalar save** para escolher um ZIP ou em **Pasta…** para escolher uma pasta. O launcher aceita:
+
+- a pasta `saves` inteira (com a pasta do usuário de 16 dígitos);
+- a pasta do usuário (por exemplo, `0009000000000001`);
+- a pasta de configuração (por exemplo, `default`), que contém os containers.
+
+Antes de substituir, o launcher cria um **backup automático** dos saves atuais. Instalar um save substitui os saves atuais do runtime; outros arquivos dentro da pasta de saves são preservados apenas no backup.
+
+**Deletar:** remove os saves instalados, movendo tudo para um backup antes. O jogo precisa estar fechado.
+
+**Backups:** até 8 backups são mantidos em `<Pasta de instalação>\state\<TitleId>\saves-backups`. Use **Restaurar** em qualquer backup; os saves atuais são copiados para um novo backup antes da restauração. Também dá para abrir a pasta de backups no Explorer.
+
+O limite é o mesmo do runtime: **256 MB** por save e até 20.000 arquivos. O ZIP é validado contra entradas com `..` ou caminhos absolutos antes de extrair. O launcher não baixa saves da internet; você escolhe o arquivo ou a pasta no seu PC.
 
 ## Hardware
 
@@ -197,6 +216,9 @@ O ícone da janela e do atalho é `app\assets\icon.ico`. Para trocar, substitua 
 - **“Faltam pré-requisitos” ao preparar o DexNom:** instale o Rust e o Visual Studio Build Tools com a carga C++ e o Windows SDK; clique em **Verificar** depois. Se o Build Tools já existe, use **Localizar Build Tools** e escolha a pasta que contém `VC\Tools\MSVC`. Para a instalação automática, use **Instalar Build Tools** ou o comando `winget` sugerido na tela. Se a instalação automática terminar sem detectar o Build Tools, reinicie o Windows e use **Verificar** de novo.
 - **Build Tools instalado em outro disco mas não detectado:** use **Localizar Build Tools** e aponte a pasta da instalação (por exemplo, `D:\VSBuildTools`). O launcher passa a usar o `vcvars64.bat` dessa instalação, sem baixar nada. Isso também funciona quando o `vswhere` não lista a instalação.
 - **A instalação do Build Tools falhou:** abra o log em `data\logs\msvc-install.log` e confira a conexão, o espaço livre (cerca de 6 GB no C:) e se a janela do UAC foi aceita. O instalador oficial também pode ser aberto manualmente pelo botão **Abrir Build Tools**.
+- **O save instalado não aparece no jogo:** confirme que o jogo está fechado, que a **Pasta de instalação** em **Jogar** é a mesma usada pelo save e que o `TitleId` mostrado na aba **Saves** é o do seu `MicrosoftGame.Config`. O caminho completo aparece na linha **Pasta de saves**; use **Abrir** para conferir.
+- **O ZIP do save foi recusado:** o launcher bloqueia ZIPs com caminhos `..`, caminhos absolutos, mais de 256 MB ou mais de 20.000 arquivos. Recompacte o save a partir da pasta de configuração (`default`) ou da pasta do usuário (16 dígitos).
+- **Deletei o save por engano:** abra a aba **Saves**, localize o backup na lista (por exemplo, “Antes de deletar”) e clique em **Restaurar**. O launcher guarda os últimos 8 backups.
 - **O DexNom não inicia o jogo:** confirme que o runtime foi preparado, que o `.exe` apontado é o da instalação correta e que a GPU suporta mesh shaders/Shader Model 6.6. Veja o log em `data\logs\dexnom-setup.log` e os diagnósticos do runtime em `%LOCALAPPDATA%\DexNom Runtime\logs`.
 - **O launcher não abre:** rode `INICIAR.cmd`; ele mostra o que falta (Node.js, npm ou dependências) e tenta instalar. Se o atalho estiver apontando para uma pasta antiga, rode `CRIAR-ATALHO.cmd` de novo.
 
