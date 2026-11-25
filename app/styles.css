@@ -2450,7 +2450,13 @@ kbd {
   color: inherit;
   font-family: inherit;
   text-align: left;
+  cursor: pointer;
   transition: background 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+}
+
+.hw-target:focus-visible {
+  outline: 2px solid rgba(255, 159, 196, 0.55);
+  outline-offset: 2px;
 }
 
 .hw-target:hover {

@@ -1750,6 +1750,7 @@ async function boot() {
   bindRace();
   bindDownloads();
   bindSettings();
+  bindHardware();
   bindAbout();
   bindLanguage();
   bindShortcuts();

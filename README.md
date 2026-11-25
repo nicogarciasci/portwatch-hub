@@ -25,17 +25,21 @@ O hub **não** hospeda, baixa nem linka arquivos do jogo, chaves ou executáveis
 
 ## Como abrir
 
-**Um clique:** dê dois cliques em `G:\PortWatch Hub.lnk` (na raiz do G:) ou em `ABRIR-LAUNCHER.vbs`, dentro da pasta do projeto. O atalho usa o ícone do app e não abre janela de console.
+**Primeira vez:** dê dois cliques em `INICIAR.cmd`. Ele confere o Node.js, instala as dependências automaticamente e abre o hub. Funciona em qualquer pasta — não há caminho fixo.
+
+**No dia a dia:** dê dois cliques em `ABRIR-LAUNCHER.vbs` para abrir sem janela de console. Se as dependências ainda não estiverem instaladas, ele chama o `INICIAR.cmd` sozinho.
+
+**Atalho na área de trabalho:** rode `CRIAR-ATALHO.cmd`. Ele cria um atalho `PortWatch Hub` com o ícone do app, apontando para a pasta atual. Se mover o projeto, rode o script de novo para atualizar o atalho.
 
 **Pelo terminal:**
 
 ```powershell
-cd "G:\PortWatch Hub"
+cd "caminho\para\PortWatch Hub"
 npm install   # só na primeira vez
 npm start
 ```
 
-Requisitos: Windows 10/11, Node.js 20 ou mais recente e as dependências instaladas (`node_modules`).
+Requisitos: Windows 10/11 e Node.js 22 ou mais recente (o npm vem junto).
 
 **Só a interface, sem o app:** `npm run preview` e abra <http://localhost:4317>. O preview inclui proxies same-origin para o tracker e para a API de forks, então a corrida e a lista de downloads funcionam no navegador. Downloads de ZIP e abertura de pastas exigem o app desktop.
 
@@ -63,7 +67,7 @@ A aba **Downloads** reúne duas fontes:
 
 O ZIP é baixado do GitHub (codeload ou API) e extraído com `Expand-Archive` na pasta escolhida. Se o arquivo tiver uma única pasta raiz, o conteúdo é achatado para ficar direto na pasta do projeto.
 
-A pasta padrão é `G:\PortWatch Hub\Downloads`. Use **Escolher pasta** para trocar e **Abrir pasta** para abrir no Explorer. O progresso aparece na própria linha, com fases de download e extração.
+A pasta padrão é `Downloads` dentro da pasta do launcher. Use **Escolher pasta** para trocar e **Abrir pasta** para abrir no Explorer. O progresso aparece na própria linha, com fases de download e extração.
 
 Projetos grandes podem demorar. Se a API do GitHub limitar as requisições, preencha um **token do GitHub** em **Ajustes → Tracker** — ele é opcional e fica salvo apenas em `data\config.json`.
 
@@ -78,7 +82,7 @@ A aba **Hardware** detecta o PC atual pelo Windows e transforma cada componente 
 | 1440p Alto · 60 FPS | 78 | 72 | 76 | 72 |
 | 4K Ultra · 60+ FPS | 90 | 82 | 85 | 82 |
 
-A detecção lê o nome da GPU, a VRAM, o modelo e os núcleos da CPU, a quantidade/tipo/velocidade da RAM e o tipo do disco de downloads. Use **Atualizar detecção** para reler o PC ou desligue **Usar hardware detectado** para simular outra combinação de peças. As notas são estimativas inspiradas em dados da comunidade; não medem o desempenho real de cada port.
+A detecção lê o nome da GPU, a VRAM, o modelo e os núcleos da CPU, a quantidade/tipo/velocidade da RAM e o tipo do disco de downloads. Use **Atualizar detecção** para reler o PC. Os selects de peças ficam sempre disponíveis: ao mudar qualquer componente, o modo manual liga sozinho; o interruptor **Usar hardware detectado** volta para a detecção real. As notas são estimativas inspiradas em dados da comunidade; não medem o desempenho real de cada port.
 
 ## Temas
 
@@ -117,7 +121,10 @@ As preferências ficam em `data\config.json`.
 ## Estrutura
 
 ```
-Launcher/
+PortWatch Hub/
+  INICIAR.cmd        inicializador: confere o Node, instala dependências e abre
+  CRIAR-ATALHO.cmd   cria o atalho na área de trabalho
+  ABRIR-LAUNCHER.vbs abre sem janela de console
   main.js            processo principal (janela, IPC, tracker, forks, downloads)
   hardware-main.js   detecção de hardware isolada
   preload.js         ponte segura para o renderer (window.portwatch)
@@ -133,11 +140,14 @@ Launcher/
     i18n.js          textos em português, inglês e espanhol
     assets/          ícone e silhueta da palmeira
     fonts/           Anton, Yellowtail e Inter locais
-  tools/             captura de tela, teste via CDP e gerador de ícone
+  tools/
+    start.ps1        banner, checagem do ambiente e instalação
+    make-shortcut.ps1 cria o atalho da área de trabalho
+    ...              captura de tela, teste via CDP e gerador de ícone
   data/config.json   preferências salvas (criado em tempo de execução)
 ```
 
-O ícone da janela e do atalho é `app\assets\icon.ico`. Para trocar, substitua `icon.png` e rode `npm run icon`; o script gera um ICO com tamanhos de 16 a 256 px.
+O ícone da janela e do atalho é `app\assets\icon.ico`. Para trocar, substitua `icon.png` e rode `npm run icon`; o script gera um ICO com tamanhos de 16 a 256 px. O `CRIAR-ATALHO.cmd` usa esse ícone.
 
 ## Créditos
 
@@ -153,7 +163,7 @@ O ícone da janela e do atalho é `app\assets\icon.ico`. Para trocar, substitua 
 - **Lista de forks vazia:** a API do GitHub pode ter atingido o limite. Preencha um token em **Ajustes → Tracker** e atualize.
 - **Download falhou:** confira a conexão e o espaço em disco. O detalhe do erro aparece no diálogo.
 - **O ZIP não extraiu:** feche o arquivo no Explorer e tente de novo; o download é mantido na pasta de downloads.
-- **O launcher não abre:** rode `npm install` na pasta e tente de novo; no atalho, se o Electron não estiver instalado, ele avisa.
+- **O launcher não abre:** rode `INICIAR.cmd`; ele mostra o que falta (Node.js, npm ou dependências) e tenta instalar. Se o atalho estiver apontando para uma pasta antiga, rode `CRIAR-ATALHO.cmd` de novo.
 
 ---
 

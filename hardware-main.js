@@ -9,7 +9,7 @@ const path = require('node:path');
 const { execFile } = require('node:child_process');
 
 function createHardware({ root, getConfig, defaultDownloads }) {
-﻿const PS_HARDWARE = `
+const PS_HARDWARE = `
 $ErrorActionPreference = 'SilentlyContinue'
 $cpu = Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores,NumberOfLogicalProcessors,MaxClockSpeed
 $memory = Get-CimInstance Win32_PhysicalMemory | Select-Object Capacity,Speed,ConfiguredClockSpeed,SMBIOSMemoryType

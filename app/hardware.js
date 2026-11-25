@@ -312,7 +312,7 @@ async function ensureHardware(refresh = false) {
     }
     if (!data) throw new Error('empty');
     state.hw.data = data;
-    initializeHardwareSelection(data);
+    if (!state.hw.manual) initializeHardwareSelection(data);
   } catch (err) {
     state.hw.error = String(err && err.message ? err.message : err);
   } finally {
@@ -443,12 +443,13 @@ function renderHardware() {
   for (const key of HW_KEYS) {
     const select = $(HW_SELECTS[key]);
     if (!select) continue;
-    select.disabled = !manual;
     if (state.hw.selection[key]) select.value = state.hw.selection[key];
   }
 
   $$('.hw-target').forEach((btn) => {
-    btn.classList.toggle('is-active', btn.dataset.target === state.hw.target);
+    const active = btn.dataset.target === state.hw.target;
+    btn.classList.toggle('is-active', active);
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
   });
 
   const refreshBtn = $('#hwRefreshBtn');
@@ -518,6 +519,8 @@ function bindHardware() {
       ensureHardware(true);
     });
   }
+
+  renderHardware();
 }
 
 function mockHardware() {
@@ -526,30 +529,29 @@ function mockHardware() {
     detectedAt: new Date().toISOString(),
     os: { platform: 'win32', release: '10.0.19045', label: 'Windows 10' },
     cpu: {
-      name: 'AMD Ryzen 3 PRO 4350G with Radeon Graphics',
-      cores: 4,
-      threads: 8,
-      maxClockMhz: 3801,
+      name: 'AMD Ryzen 5 5600 6-Core Processor',
+      cores: 6,
+      threads: 12,
+      maxClockMhz: 4400,
     },
     gpu: {
-      name: 'AMD Radeon RX 580 2048SP',
-      driver: '31.0.21925.1001',
-      vramBytes: 8 * gb,
-      adapters: [{ name: 'AMD Radeon RX 580 2048SP', driver: '31.0.21925.1001', vramBytes: 8 * gb }],
+      name: 'NVIDIA GeForce RTX 3060',
+      driver: '31.0.15.3623',
+      vramBytes: 12 * gb,
+      adapters: [{ name: 'NVIDIA GeForce RTX 3060', driver: '31.0.15.3623', vramBytes: 12 * gb }],
     },
     ram: {
       totalBytes: 16 * gb,
       type: 'DDR4',
-      speedMhz: 2400,
+      speedMhz: 3200,
       modules: [
-        { capacityBytes: 8 * gb, speedMhz: 2400, type: 'DDR4' },
-        { capacityBytes: 8 * gb, speedMhz: 2400, type: 'DDR4' },
+        { capacityBytes: 8 * gb, speedMhz: 3200, type: 'DDR4' },
+        { capacityBytes: 8 * gb, speedMhz: 3200, type: 'DDR4' },
       ],
     },
     drives: [
-      { root: 'C:\\', letter: 'C', freeBytes: 6 * gb, totalBytes: 255 * gb, mediaType: 'SSD', busType: 'SATA', model: 'GC256', roles: ['disk'] },
-      { root: 'D:\\', letter: 'D', freeBytes: 262 * gb, totalBytes: 499 * gb, mediaType: 'Unspecified', busType: 'SATA', model: 'WDC WD5000AVDS', roles: ['project', 'disk'] },
-      { root: 'G:\\', letter: 'G', freeBytes: 376 * gb, totalBytes: 960 * gb, mediaType: 'SSD', busType: 'SATA', model: 'KINGSTON SA400S37960G', roles: ['game', 'disk'] },
+      { root: 'C:\\', letter: 'C', freeBytes: 48 * gb, totalBytes: 512 * gb, mediaType: 'SSD', busType: 'NVMe', model: 'Generic NVMe SSD', roles: ['disk'] },
+      { root: 'D:\\', letter: 'D', freeBytes: 300 * gb, totalBytes: 1000 * gb, mediaType: 'SSD', busType: 'SATA', model: 'Generic SATA SSD', roles: ['project', 'downloads', 'disk'] },
     ],
     warnings: [],
   };

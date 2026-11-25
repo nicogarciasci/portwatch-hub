@@ -10,5 +10,5 @@ data/
 /palm-test.png
 *.log
 
-# atalho local do Windows
-/PortWatch Hub.lnk
+# atalhos locais do Windows
+/*.lnk
