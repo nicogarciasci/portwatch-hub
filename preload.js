@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('portwatch', {
   dexnomChooseGame: () => ipcRenderer.invoke('dexnom:choose-game'),
   dexnomChooseSource: () => ipcRenderer.invoke('dexnom:choose-source'),
   dexnomChooseInstall: () => ipcRenderer.invoke('dexnom:choose-install'),
+  dexnomInstallMsvc: () => ipcRenderer.invoke('dexnom:install-msvc'),
   dexnomPrepare: () => ipcRenderer.invoke('dexnom:prepare'),
   dexnomCancel: () => ipcRenderer.invoke('dexnom:cancel'),
   dexnomLaunch: () => ipcRenderer.invoke('dexnom:launch'),
@@ -48,5 +49,10 @@ contextBridge.exposeInMainWorld('portwatch', {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on('dexnom:game', listener);
     return () => ipcRenderer.removeListener('dexnom:game', listener);
+  },
+  onDexnomMsvc: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('dexnom:msvc', listener);
+    return () => ipcRenderer.removeListener('dexnom:msvc', listener);
   },
 });

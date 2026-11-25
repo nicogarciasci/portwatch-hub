@@ -1687,6 +1687,25 @@ body[data-view='downloads'] .sheet {
   margin-top: 7px;
 }
 
+.play-prereq-actions .mini-btn.is-install {
+  color: #1a0712;
+  border-color: transparent;
+  background: linear-gradient(135deg, #ff9fc4, #ff6b9d 55%, #e7508a);
+  box-shadow: 0 8px 20px -10px rgba(255, 107, 157, 0.7);
+}
+
+.play-prereq-actions .mini-btn.is-install:hover {
+  filter: brightness(1.05);
+  background: linear-gradient(135deg, #ffb1c2, #ff6b9d 55%, #e7508a);
+}
+
+.play-install-state {
+  margin: 7px 0 0;
+  font-size: 9.5px;
+  line-height: 1.5;
+  color: #ffd08a;
+}
+
 .play-cmd {
   display: block;
   margin-top: 7px;

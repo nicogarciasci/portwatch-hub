@@ -38,6 +38,8 @@ const DEFAULT_DOWNLOADS = path.join(__dirname, 'Downloads');
 const DEXNOM_SETUP_FILE = 'Setup-DexNomRuntime.ps1';
 const DEXNOM_PLAYER = 'victory-play.exe';
 const DEXNOM_SETUP_LOG = path.join(LOGS_DIR, 'dexnom-setup.log');
+const MSVC_INSTALL_LOG = path.join(LOGS_DIR, 'msvc-install.log');
+const VS_BUILDTOOLS_URL = 'https://aka.ms/vs/17/release/vs_BuildTools.exe';
 
 const DEFAULTS = {
   language: null,
@@ -590,6 +592,7 @@ function openDownloaded(name) {
 
 let dexnomSetup = null;
 let dexnomGame = null;
+let msvcInstall = null;
 
 function isFile(target) {
   try {
@@ -617,6 +620,10 @@ function sendSetup(payload) {
 
 function sendGame(payload) {
   sendToWindow('dexnom:game', payload);
+}
+
+function sendMsvc(payload) {
+  sendToWindow('dexnom:msvc', payload);
 }
 
 function execText(file, args, timeout = 15000) {
@@ -828,6 +835,11 @@ async function dexnomStatus() {
       ? { running: true, startedAt: dexnomSetup.startedAt, lines: dexnomSetup.lines.slice(-600) }
       : { running: false },
     game: dexnomGame ? { running: true, pid: dexnomGame.pid } : { running: false },
+    msvcInstall: msvcInstall
+      ? { running: true, startedAt: msvcInstall.startedAt, lines: msvcInstall.lines.slice(-200) }
+      : { running: false },
+    msvcLogPath: MSVC_INSTALL_LOG,
+    msvcLogExists: fs.existsSync(MSVC_INSTALL_LOG),
     rt: Boolean(cfg.dexnomRayTracing),
     logPath: DEXNOM_SETUP_LOG,
   };
@@ -844,6 +856,121 @@ function appendSetupLog(line) {
 function killTree(pid) {
   if (!pid) return;
   execFile('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }, () => {});
+}
+
+function startMsvcInstall() {
+  ensureDirs();
+  const scriptPath = path.join(TMP_DIR, 'install-msvc.ps1');
+  const logPath = MSVC_INSTALL_LOG.replace(/'/g, "''");
+  const script = `$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+$log = '${logPath}'
+function Log([string]$Message) {
+  [IO.File]::AppendAllText($log, $Message + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
+  Write-Output $Message
+}
+Log 'Baixando o instalador oficial do Visual Studio Build Tools...'
+$installer = Join-Path $env:TEMP 'vs_BuildTools_PortWatch.exe'
+try {
+  Invoke-WebRequest -Uri '${VS_BUILDTOOLS_URL}' -OutFile $installer -UseBasicParsing -TimeoutSec 180
+  $sig = Get-AuthenticodeSignature -FilePath $installer
+  if (-not $sig.SignerCertificate -or $sig.SignerCertificate.Subject -notmatch 'Microsoft') {
+    throw 'O instalador baixado nao tem assinatura da Microsoft.'
+  }
+  if ($sig.Status -eq 'HashMismatch' -or $sig.Status -eq 'NotSigned') {
+    throw "Assinatura digital invalida: $($sig.Status)"
+  }
+  Log 'Assinatura digital verificada. O Windows vai pedir permissao de administrador.'
+  Log 'Instalando a carga C++ e o Windows SDK. Pode levar de 10 a 30 minutos...'
+  $arguments = @('--quiet','--wait','--norestart','--nocache','--add','Microsoft.VisualStudio.Workload.VCTools','--includeRecommended')
+  $process = Start-Process -FilePath $installer -ArgumentList $arguments -Verb RunAs -Wait -PassThru
+  if ($process.ExitCode -eq 3010) {
+    Log 'Instalacao concluida. Reinicie o Windows para finalizar.'
+    exit 0
+  }
+  if ($process.ExitCode -ne 0) {
+    throw "O instalador saiu com codigo $($process.ExitCode)."
+  }
+  Log 'Instalacao concluida com sucesso.'
+  exit 0
+} catch {
+  Log "ERRO: $($_.Exception.Message)"
+  exit 1
+} finally {
+  Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
+}
+`;
+
+  fs.writeFileSync(scriptPath, '\ufeff' + script, 'utf8');
+  try {
+    fs.writeFileSync(
+      MSVC_INSTALL_LOG,
+      `PortWatch Hub - instalacao do Visual Studio Build Tools\r\n${new Date().toISOString()}\r\n\r\n`,
+      'utf8'
+    );
+  } catch {
+    /* o script tambem grava o log */
+  }
+
+  const child = spawn(
+    'powershell.exe',
+    ['-NoLogo', '-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-File', scriptPath],
+    { windowsHide: true, env: { ...process.env } }
+  );
+  const run = { child, startedAt: Date.now(), lines: [], finished: false };
+  msvcInstall = run;
+  sendMsvc({ type: 'start', at: run.startedAt });
+
+  let buffer = '';
+  const onChunk = (chunk) => {
+    buffer += chunk.toString('utf8').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const parts = buffer.split('\n');
+    buffer = parts.pop();
+    for (const raw of parts) {
+      const line = raw.replace(/\u0000/g, '').trimEnd();
+      if (!line) continue;
+      run.lines.push(line);
+      if (run.lines.length > 300) run.lines.shift();
+      sendMsvc({ type: 'line', line });
+    }
+  };
+  child.stdout.on('data', onChunk);
+  child.stderr.on('data', onChunk);
+
+  const finish = (payload) => {
+    if (run.finished) return;
+    run.finished = true;
+    if (buffer.trim()) {
+      const line = buffer.trim();
+      run.lines.push(line);
+      sendMsvc({ type: 'line', line });
+    }
+    if (msvcInstall === run) msvcInstall = null;
+    sendMsvc(payload);
+  };
+
+  child.on('error', (err) => {
+    const detail = String(err && err.message ? err.message : err);
+    try {
+      fs.appendFileSync(MSVC_INSTALL_LOG, detail + '\r\n', 'utf8');
+    } catch {
+      /* log opcional */
+    }
+    finish({ type: 'error', error: detail, tail: run.lines.slice(-14).join('\n') });
+  });
+
+  child.on('close', (code) => {
+    if (code === 0) {
+      finish({ type: 'done', code, lines: run.lines.slice(-30) });
+      return;
+    }
+    finish({
+      type: 'error',
+      code,
+      tail: run.lines.slice(-14).join('\n'),
+      detail: `O instalador terminou com codigo ${code}.`,
+    });
+  });
 }
 
 function startDexnomSetup(source, gameExe, installDir) {
@@ -1113,6 +1240,16 @@ ipcMain.handle('dexnom:choose-install', async () => {
   return { ok: true, status: await dexnomStatus() };
 });
 
+ipcMain.handle('dexnom:install-msvc', () => {
+  if (msvcInstall) return { ok: false, error: 'busy' };
+  try {
+    startMsvcInstall();
+    return { ok: true, started: true };
+  } catch (err) {
+    return { ok: false, error: 'spawn', detail: String(err.message || err) };
+  }
+});
+
 ipcMain.handle('dexnom:prepare', async () => {
   if (dexnomSetup) return { ok: false, error: 'busy' };
   const status = await dexnomStatus();
@@ -1195,6 +1332,11 @@ ipcMain.handle('dexnom:open', async (_event, kind) => {
     if (kind === 'log') {
       if (!fs.existsSync(DEXNOM_SETUP_LOG)) return { ok: false, missing: true };
       shell.showItemInFolder(DEXNOM_SETUP_LOG);
+      return { ok: true };
+    }
+    if (kind === 'msvc-log') {
+      if (!fs.existsSync(MSVC_INSTALL_LOG)) return { ok: false, missing: true };
+      shell.showItemInFolder(MSVC_INSTALL_LOG);
       return { ok: true };
     }
     const target = kind === 'source' ? findDexnomSource() : kind === 'runtime' ? dexnomRuntime()?.dir : '';
