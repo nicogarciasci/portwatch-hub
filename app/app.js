@@ -21,9 +21,15 @@ const DEFAULTS = {
   musicVolume: 55,
   startFullscreen: false,
   reduceMotion: false,
+  gameExe: '',
+  dexnomSource: '',
+  dexnomRuntime: '',
+  dexnomInstallDir: '',
+  dexnomRayTracing: false,
 };
 
 const VIEW_META = {
+  play: { kickerKey: 'view.play.kicker', titleKey: 'view.play.title', footer: false },
   race: { kickerKey: 'view.race.kicker', titleKey: 'view.race.title', footer: false },
   downloads: { kickerKey: 'view.downloads.kicker', titleKey: 'view.downloads.title', footer: false },
   hardware: { kickerKey: 'view.hardware.kicker', titleKey: 'view.hardware.title', footer: false },
@@ -34,7 +40,7 @@ const VIEW_META = {
 const state = {
   config: { ...DEFAULTS },
   defaults: { ...DEFAULTS },
-  appVersion: '2.0.0',
+  appVersion: '2.1.0',
   site: SITE_URL,
   trackerRepo: TRACKER_GITHUB,
   tracker: null,
@@ -48,6 +54,13 @@ const state = {
   downloads: { dir: '', items: [] },
   downloading: new Map(),
   picking: new Set(),
+  dexnom: {
+    status: null,
+    loading: false,
+    settingUp: false,
+    launchBusy: false,
+    log: [],
+  },
   dlQuery: '',
   filter: 'all',
   sort: 'score',
@@ -583,6 +596,7 @@ function renderAllData() {
   renderHome();
   renderRace();
   renderDownloads();
+  renderPlay();
   renderAbout();
 }
 
@@ -928,7 +942,11 @@ function downloadRow(item) {
     const label = progress.phase === 'extract' ? t('dl.extract') : `${t('dl.downloading')} ${percent}%`;
     action = `<button class="mini-btn dl-action" type="button" disabled>${esc(label)}</button>`;
   } else if (done) {
-    action = `<button class="mini-btn dl-action is-done" type="button" data-open-folder="${esc(item.folder)}">${esc(t('dl.openFolder'))}</button>`;
+    const play =
+      item.repo === 'DexNom/VIctory'
+        ? `<button class="mini-btn dl-action is-play" type="button" data-play-dexnom="1"><svg class="ic"><use href="#i-gamepad"></use></svg>${esc(t('play.play'))}</button>`
+        : '';
+    action = `<div class="dl-row-actions">${play}<button class="mini-btn dl-action is-done" type="button" data-open-folder="${esc(item.folder)}">${esc(t('dl.openFolder'))}</button></div>`;
   } else {
     action = `<button class="mini-btn dl-action" type="button" data-dl-repo="${esc(item.repo)}" data-dl-branch="${esc(item.branch)}" data-dl-name="${esc(item.folder)}" data-dl-label="${esc(item.label)}">${esc(t('dl.download'))}</button>`;
   }
@@ -1160,6 +1178,12 @@ function openExternal(url) {
 }
 
 function onListClick(event) {
+  const playBtn = event.target.closest('[data-play-dexnom]');
+  if (playBtn) {
+    openView('play');
+    return;
+  }
+
   const downloadBtn = event.target.closest('[data-dl-repo]');
   if (downloadBtn) {
     const repo = downloadBtn.dataset.dlRepo;
@@ -1187,6 +1211,423 @@ function onListClick(event) {
 }
 
 /* =========================================================================
+   JOGAR — DEXNOM RUNTIME
+   ========================================================================= */
+
+const DEXNOM_RUST_URL = 'https://rustup.rs/';
+const DEXNOM_MSVC_URL = 'https://visualstudio.microsoft.com/visual-cpp-build-tools/';
+
+function dexnomCheck(id, tone, text) {
+  const row = $(`#${id}`);
+  if (!row) return;
+  row.classList.toggle('is-ok', tone === 'ok');
+  row.classList.toggle('is-warn', tone === 'warn');
+  row.classList.toggle('is-bad', tone === 'bad');
+  const path = row.querySelector('.play-path');
+  if (path) {
+    path.textContent = text || '—';
+    path.title = text || '';
+  }
+}
+
+function appendDexnomLog(line) {
+  const pre = $('#playLog');
+  if (!pre) return;
+  const atBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 30;
+  pre.textContent = pre.textContent ? `${pre.textContent}\n${line}` : line;
+  if (atBottom) pre.scrollTop = pre.scrollHeight;
+}
+
+function renderDexnomLog() {
+  const card = $('#playLogCard');
+  const pre = $('#playLog');
+  if (!card || !pre) return;
+  card.hidden = !state.dexnom.log.length && !state.dexnom.settingUp;
+  pre.textContent = state.dexnom.log.join('\n');
+  pre.scrollTop = pre.scrollHeight;
+}
+
+async function loadDexnomStatus() {
+  if (!IS_DESKTOP) {
+    state.dexnom.status = null;
+    renderPlay();
+    return;
+  }
+  state.dexnom.loading = true;
+  renderPlay();
+  try {
+    const status = await window.portwatch.dexnomStatus();
+    state.dexnom.status = status;
+    state.dexnom.settingUp = Boolean(status && status.setup && status.setup.running);
+    if (status && status.setup && status.setup.running) {
+      const lines = Array.isArray(status.setup.lines) ? status.setup.lines : [];
+      if (lines.length && !state.dexnom.log.length) {
+        state.dexnom.log = lines.slice(-600);
+        renderDexnomLog();
+      }
+    }
+    if (status.gameExe) state.config.gameExe = status.gameExe;
+    if (status.runtime) state.config.dexnomRuntime = status.runtime.dir;
+    if (status.source) state.config.dexnomSource = status.source.dir;
+    if (status.installDir) state.config.dexnomInstallDir = status.installDefault ? '' : status.installDir;
+  } catch {
+    state.dexnom.status = null;
+  } finally {
+    state.dexnom.loading = false;
+    renderPlay();
+  }
+}
+
+function renderPlay() {
+  const status = state.dexnom.status;
+  const setupRunning = state.dexnom.settingUp || Boolean(status && status.setup && status.setup.running);
+  const running = Boolean(status && status.game && status.game.running);
+  const source = status && status.source;
+  const gameExe = status && status.gameExe;
+  const rust = status && status.rust;
+  const msvc = status && status.msvc;
+  const runtime = status && status.runtime;
+  const rustOk = Boolean(rust && rust.ok);
+  const msvcOk = Boolean(msvc && msvc.ok && msvc.sdk);
+
+  dexnomCheck('playCheckSource', source ? 'ok' : 'bad', source ? source.dir : t('play.sourceMissing'));
+  dexnomCheck('playCheckGame', gameExe ? 'ok' : 'bad', gameExe || t('play.gameMissing'));
+  const installDir = status && status.installDir;
+  const installText = installDir
+    ? `${status.installDefault ? `${t('play.defaultFolder')} · ` : ''}${installDir}`
+    : t('play.installMissing');
+  dexnomCheck(
+    'playCheckInstall',
+    installDir ? (status.installExists ? 'ok' : 'warn') : 'bad',
+    installText
+  );
+  dexnomCheck(
+    'playCheckRust',
+    rustOk ? 'ok' : 'warn',
+    rustOk ? rust.version || t('play.detected') : t('play.rustMissing')
+  );
+  dexnomCheck(
+    'playCheckMsvc',
+    msvcOk ? 'ok' : 'warn',
+    msvcOk ? msvc.path : msvc && msvc.ok && !msvc.sdk ? t('play.msvcNoSdk') : t('play.msvcMissing')
+  );
+  dexnomCheck(
+    'playCheckRuntime',
+    runtime ? 'ok' : 'warn',
+    runtime ? runtime.dir : t('play.runtimeMissing')
+  );
+
+  const prereq = $('#playPrereq');
+  if (prereq) {
+    const missingRust = Boolean(status) && !rustOk;
+    const missingMsvc = Boolean(status) && !msvcOk;
+    prereq.hidden = !missingRust && !missingMsvc;
+    const text = $('#playPrereqText');
+    if (text) {
+      const parts = [];
+      if (missingRust) parts.push(t('play.prereqRust'));
+      if (missingMsvc) parts.push(t('play.prereqMsvc'));
+      text.textContent = parts.join(' ');
+    }
+    const rustBtn = $('#playPrereqRust');
+    if (rustBtn) rustBtn.hidden = !missingRust;
+    const msvcBtn = $('#playPrereqMsvc');
+    if (msvcBtn) msvcBtn.hidden = !missingMsvc;
+    const cmd = $('#playMsvcCmd');
+    if (cmd) cmd.hidden = !missingMsvc;
+  }
+
+  const setupState = $('#playSetupState');
+  if (setupState) {
+    setupState.classList.toggle('is-run', setupRunning);
+    setupState.classList.toggle('is-ok', !setupRunning && Boolean(runtime));
+    setupState.classList.toggle('is-warn', !setupRunning && !runtime);
+    setupState.textContent = setupRunning
+      ? t('play.preparing')
+      : runtime
+        ? t('play.prepared')
+        : t('play.notPrepared');
+  }
+
+  const gameState = $('#playGameState');
+  if (gameState) {
+    gameState.classList.toggle('is-run', running);
+    gameState.classList.toggle('is-ok', !running && Boolean(runtime && gameExe));
+    gameState.classList.toggle('is-warn', !running && !(runtime && gameExe));
+    gameState.textContent = running
+      ? t('play.running')
+      : runtime && gameExe
+        ? t('play.ready')
+        : t('play.notReady');
+  }
+
+  const canPrepare = Boolean(status && source && gameExe && rustOk && msvcOk) && !setupRunning;
+  const prepare = $('#playPrepare');
+  if (prepare) prepare.disabled = !canPrepare;
+  const cancel = $('#playCancelSetup');
+  if (cancel) cancel.hidden = !setupRunning;
+
+  const canPlay = Boolean(runtime && gameExe) && !setupRunning;
+  const launch = $('#playLaunch');
+  const label = $('#playLaunchLabel');
+  if (launch) {
+    launch.disabled = state.dexnom.launchBusy || (!running && !canPlay);
+    launch.classList.toggle('is-stop', running);
+    const use = launch.querySelector('.ic use');
+    if (use) use.setAttribute('href', running ? '#i-stop' : '#i-play');
+  }
+  if (label) label.textContent = running ? t('play.stop') : t('play.play');
+
+  const stop = $('#playStop');
+  if (stop) stop.hidden = true;
+  const openLog = $('#playOpenLog');
+  if (openLog) openLog.hidden = !state.dexnom.log.length;
+
+  const note = $('#playGameNote');
+  if (note) {
+    note.textContent = running
+      ? t('play.gameRunningNote')
+      : runtime && gameExe
+        ? t('play.gameReadyNote')
+        : t('play.gameNote');
+  }
+
+  const rt = $('#playRt');
+  if (rt) rt.checked = Boolean(state.config.dexnomRayTracing);
+  const openRuntime = $('#playOpenRuntime');
+  if (openRuntime) openRuntime.disabled = !runtime;
+  const openSource = $('#playOpenSource');
+  if (openSource) openSource.disabled = !source;
+}
+
+async function chooseDexnomSource() {
+  if (!IS_DESKTOP) return;
+  const result = await window.portwatch.dexnomChooseSource();
+  if (result && result.status) state.dexnom.status = result.status;
+  if (result && result.ok) {
+    if (result.status && result.status.source) state.config.dexnomSource = result.status.source.dir;
+    toast(t('play.sourceSaved'), 'ok');
+  } else if (result && !result.canceled) {
+    toast(t('play.sourceInvalid'), 'warn');
+  }
+  renderPlay();
+}
+
+async function chooseDexnomGame() {
+  if (!IS_DESKTOP) return;
+  const result = await window.portwatch.dexnomChooseGame();
+  if (result && result.status) state.dexnom.status = result.status;
+  if (result && result.ok) {
+    if (result.status && result.status.gameExe) state.config.gameExe = result.status.gameExe;
+    toast(t('play.gameSaved'), 'ok');
+  } else if (result && !result.canceled) {
+    toast(t('play.gameInvalid'), 'warn');
+  }
+  renderPlay();
+}
+
+async function chooseDexnomInstall() {
+  if (!IS_DESKTOP) return;
+  const result = await window.portwatch.dexnomChooseInstall();
+  if (result && result.status) state.dexnom.status = result.status;
+  if (result && result.ok) {
+    if (result.status && result.status.installDir) state.config.dexnomInstallDir = result.status.installDir;
+    if (result.status && result.status.runtime) state.config.dexnomRuntime = result.status.runtime.dir;
+    toast(t('play.installSaved'), 'ok');
+  } else if (result && !result.canceled) {
+    toast(t('play.installInvalid'), 'warn');
+  }
+  renderPlay();
+}
+
+async function prepareDexnom() {
+  if (!IS_DESKTOP) return;
+  const result = await window.portwatch.dexnomPrepare();
+  if (!result || !result.ok) {
+    const code = result && result.error;
+    if (code === 'msvc') {
+      toast(t('play.needMsvc'), 'warn', 5000);
+      const box = $('#playPrereq');
+      if (box) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else if (code === 'rust') {
+      toast(t('play.needRust'), 'warn');
+    } else if (code === 'game') {
+      toast(t('play.needGame'), 'warn');
+    } else if (code === 'source') {
+      toast(t('play.needSource'), 'warn');
+    } else if (code === 'install') {
+      toast(t('play.installInvalid'), 'warn', 5000);
+    } else if (code === 'disk') {
+      showDialog({
+        title: t('play.diskTitle'),
+        message: t('play.diskMsg', { free: result.freeGB == null ? '—' : result.freeGB }),
+      });
+    } else if (code === 'busy') {
+      toast(t('play.busy'), 'warn');
+    } else {
+      showDialog({
+        title: t('play.failTitle'),
+        message: (result && result.detail) || t('play.failMsg'),
+      });
+    }
+    return;
+  }
+  state.dexnom.log = [];
+  state.dexnom.settingUp = true;
+  renderDexnomLog();
+  renderPlay();
+  toast(t('play.prepareStarted'), 'ok', 4600);
+}
+
+async function cancelDexnomSetup() {
+  if (!IS_DESKTOP) return;
+  const result = await window.portwatch.dexnomCancel();
+  if (result && result.ok) toast(t('play.canceling'), 'warn');
+}
+
+async function toggleDexnomGame() {
+  if (!IS_DESKTOP) return;
+  const running = Boolean(state.dexnom.status && state.dexnom.status.game && state.dexnom.status.game.running);
+  if (running) {
+    await window.portwatch.dexnomStop();
+    return;
+  }
+  state.dexnom.launchBusy = true;
+  renderPlay();
+  try {
+    const result = await window.portwatch.dexnomLaunch();
+    if (!result || !result.ok) {
+      const code = result && result.error;
+      if (code === 'runtime') toast(t('play.needPrepare'), 'warn');
+      else if (code === 'game') toast(t('play.needGame'), 'warn');
+      else if (code === 'running') toast(t('play.alreadyRunning'), 'warn');
+      else {
+        showDialog({
+          title: t('play.failTitle'),
+          message: (result && result.detail) || t('play.launchFail'),
+        });
+      }
+    }
+  } finally {
+    state.dexnom.launchBusy = false;
+    await loadDexnomStatus();
+  }
+}
+
+async function openDexnomPath(kind) {
+  if (!IS_DESKTOP) return;
+  const result = await window.portwatch.dexnomOpen(kind);
+  if (result && result.ok === false) {
+    toast(result.missing ? t('toast.folderMissing') : t('toast.folderError'), 'warn');
+  }
+}
+
+function handleDexnomSetup(payload) {
+  if (!payload) return;
+  if (payload.type === 'start') {
+    state.dexnom.settingUp = true;
+    state.dexnom.log = [];
+    renderDexnomLog();
+    renderPlay();
+    return;
+  }
+  if (payload.type === 'line') {
+    state.dexnom.log.push(payload.line);
+    if (state.dexnom.log.length > 1200) {
+      state.dexnom.log.splice(0, state.dexnom.log.length - 1200);
+    }
+    const card = $('#playLogCard');
+    if (card) card.hidden = false;
+    appendDexnomLog(payload.line);
+    return;
+  }
+  if (payload.type === 'done' || payload.type === 'error') {
+    state.dexnom.settingUp = false;
+    if (payload.type === 'done') {
+      toast(
+        payload.canceled ? t('play.prepareCanceled') : t('play.prepareDone'),
+        payload.canceled ? 'warn' : 'ok'
+      );
+    } else {
+      toast(t('play.prepareFailed'), 'bad', 5000);
+      showDialog({
+        title: t('play.failTitle'),
+        message: t('play.prepareFailedMsg'),
+        detail: payload.tail || '',
+      });
+    }
+    loadDexnomStatus();
+  }
+}
+
+function handleDexnomGame(payload) {
+  if (!payload) return;
+  if (!state.dexnom.status) state.dexnom.status = {};
+  state.dexnom.status.game = { running: Boolean(payload.running), pid: payload.pid || null };
+  if (payload.running) {
+    toast(t('play.launched'), 'ok');
+  } else if (payload.error) {
+    toast(t('play.launchFailedShort'), 'bad', 5000);
+  } else if (payload.code != null && payload.code !== 0) {
+    toast(t('play.closedCode', { code: payload.code }), 'warn');
+  }
+  renderPlay();
+}
+
+function bindPlay() {
+  const on = (selector, handler) => {
+    const el = $(selector);
+    if (el) el.addEventListener('click', handler);
+  };
+
+  on('#playRefresh', () => loadDexnomStatus());
+  on('#playChooseSource', chooseDexnomSource);
+  on('#playChooseGame', chooseDexnomGame);
+  on('#playChooseInstall', chooseDexnomInstall);
+  on('#playPrepare', prepareDexnom);
+  on('#playCancelSetup', cancelDexnomSetup);
+  on('#playLaunch', toggleDexnomGame);
+  on('#playStop', toggleDexnomGame);
+  on('#playOpenSource', () => openDexnomPath('source'));
+  on('#playOpenRuntime', () => openDexnomPath('runtime'));
+  on('#playOpenLog', () => openDexnomPath('log'));
+  on('#playRustHelp', () => openExternal(DEXNOM_RUST_URL));
+  on('#playPrereqRust', () => openExternal(DEXNOM_RUST_URL));
+  on('#playMsvcHelp', () => openExternal(DEXNOM_MSVC_URL));
+  on('#playPrereqMsvc', () => openExternal(DEXNOM_MSVC_URL));
+
+  const clear = $('#playLogClear');
+  if (clear) {
+    clear.addEventListener('click', () => {
+      state.dexnom.log = [];
+      renderDexnomLog();
+      renderPlay();
+    });
+  }
+
+  const rt = $('#playRt');
+  if (rt) {
+    rt.addEventListener('change', async () => {
+      state.config.dexnomRayTracing = rt.checked;
+      if (IS_DESKTOP) await window.portwatch.saveConfig({ dexnomRayTracing: rt.checked });
+    });
+  }
+
+  const cmd = $('#playMsvcCmd');
+  if (cmd) {
+    cmd.title = t('play.copyHint');
+    cmd.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(cmd.textContent.trim());
+        toast(t('play.copied'), 'ok', 1800);
+      } catch {
+        /* clipboard bloqueado */
+      }
+    });
+  }
+}
+
+/* =========================================================================
    SOBRE
    ========================================================================= */
 
@@ -1210,6 +1651,15 @@ function renderAbout() {
    FOLHAS / NAVEGAÇÃO
    ========================================================================= */
 
+function applyViewHeader() {
+  const meta = VIEW_META[activeView];
+  if (!meta) return;
+  const kicker = $('#sheetKicker');
+  const title = $('#sheetTitle');
+  if (kicker) kicker.textContent = t(meta.kickerKey);
+  if (title) title.textContent = t(meta.titleKey);
+}
+
 function openView(view) {
   const meta = VIEW_META[view];
   if (!meta) return;
@@ -1230,8 +1680,7 @@ function openView(view) {
     draft = null;
   }
 
-  $('#sheetKicker').textContent = t(meta.kickerKey);
-  $('#sheetTitle').textContent = t(meta.titleKey);
+  applyViewHeader();
   $('#sheetFoot').hidden = !meta.footer;
 
   $$('.view').forEach((item) => item.classList.toggle('is-active', item.dataset.view === view));
@@ -1245,6 +1694,10 @@ function openView(view) {
   overlay.setAttribute('aria-hidden', 'false');
 
   if (view === 'hardware') ensureHardware();
+  if (view === 'play') {
+    renderPlay();
+    loadDexnomStatus();
+  }
   if (view === 'race') {
     renderRace();
     if (!state.tracker && !state.trackerLoading) fetchRace();
@@ -1364,6 +1817,7 @@ async function chooseStartupLanguage(lang) {
   if (draft) draft.language = lang;
   setLanguage(lang);
   applyI18n();
+  applyViewHeader();
   applyStateToUI();
   renderAllData();
   hideLanguageChooser();
@@ -1384,6 +1838,7 @@ async function changeLanguage(lang) {
   if (draft) draft.language = lang;
   setLanguage(lang);
   applyI18n();
+  applyViewHeader();
   applyStateToUI();
   renderAllData();
   toast(t('toast.language'));
@@ -1513,6 +1968,9 @@ function bindHero() {
   const homeRace = $('#homeRace');
   if (homeRace) homeRace.addEventListener('click', () => openView('race'));
 
+  const homePlay = $('#homePlay');
+  if (homePlay) homePlay.addEventListener('click', quickPlay);
+
   const site = $('#siteBtn');
   if (site) site.addEventListener('click', () => openExternal(state.site));
   const homeSite = $('#homeSite');
@@ -1525,6 +1983,49 @@ function bindHero() {
 
   const refresh = $('#homeRefresh');
   if (refresh) refresh.addEventListener('click', () => refreshAll({ force: true }));
+}
+
+async function quickPlay() {
+  if (!IS_DESKTOP) {
+    toast(t('toast.openDesktop'), 'warn');
+    return;
+  }
+  if (state.dexnom.launchBusy) return;
+  state.dexnom.launchBusy = true;
+  try {
+    const status = await window.portwatch.dexnomStatus();
+    state.dexnom.status = status;
+    if (status.game && status.game.running) {
+      openView('play');
+      return;
+    }
+    if (status.setup && status.setup.running) {
+      openView('play');
+      toast(t('play.busy'), 'warn');
+      return;
+    }
+    if (!status.runtime || !status.gameExe) {
+      openView('play');
+      if (!status.source) toast(t('play.needSource'), 'warn');
+      else if (!status.gameExe) toast(t('play.needGame'), 'warn');
+      else toast(t('play.needPrepare'), 'warn');
+      return;
+    }
+    const result = await window.portwatch.dexnomLaunch();
+    if (!result || !result.ok) {
+      openView('play');
+      const code = result && result.error;
+      if (code === 'runtime') toast(t('play.needPrepare'), 'warn');
+      else if (code === 'game') toast(t('play.needGame'), 'warn');
+      else if (code === 'running') toast(t('play.alreadyRunning'), 'warn');
+      else toast((result && result.detail) || t('play.launchFail'), 'bad', 5000);
+    }
+  } catch {
+    openView('play');
+    toast(t('play.launchFail'), 'bad', 5000);
+  } finally {
+    state.dexnom.launchBusy = false;
+  }
 }
 
 function bindRace() {
@@ -1767,6 +2268,7 @@ async function boot() {
   bindHero();
   bindRace();
   bindDownloads();
+  bindPlay();
   bindSettings();
   bindHardware();
   bindAbout();
@@ -1777,6 +2279,12 @@ async function boot() {
 
   if (IS_DESKTOP && window.portwatch.onDownloadProgress) {
     window.portwatch.onDownloadProgress(handleDownloadProgress);
+  }
+  if (IS_DESKTOP && window.portwatch.onDexnomSetup) {
+    window.portwatch.onDexnomSetup(handleDexnomSetup);
+  }
+  if (IS_DESKTOP && window.portwatch.onDexnomGame) {
+    window.portwatch.onDexnomGame(handleDexnomGame);
   }
 
   renderRace();

@@ -22,6 +22,7 @@ Se o Windows SmartScreen avisar que o app não tem assinatura, clique em **Mais 
 - **Corrida ao vivo:** busca `data/tracker.json` do repositório oficial e aplica o mesmo modelo de pontuação do site (Groundwork → Exe runs → First frame → Main menu → In the world → Playable → Complete, com as trilhas story/render/performance/stability).
 - **Leaderboard completo:** projetos ranqueados, builds privadas, watchlist e projetos desativados, com filtros por alvo (GTA VI ou camadas gerais) e ordenação por progresso, estrelas ou atividade.
 - **Downloads integrados:** lista todos os projetos públicos do tracker e todos os forks do PortWatch, com busca, progresso e extração automática do ZIP. Ao baixar uma fork, o launcher pergunta em qual pasta você quer salvar.
+- **Jogar com DexNom:** prepara o runtime **DexNom** (fork do VIctory para AMD Radeon) e inicia o GTA VI com a sua cópia local do jogo, com botão **Jogar/Parar**, atalho **Executar** na tela inicial, pasta de instalação configurável, ray tracing opcional e log da preparação.
 - **Hardware:** detecta CPU, GPU, VRAM, RAM e armazenamento, permite simular outras peças e compara o PC com alvos de 1080p a 4K.
 - **Temas:** **Vice City** (padrão) e **Los Santos**, com cenário, cores e rádio próprios.
 - **Trilíngue:** Português (Brasil), English e Español, com escolha na primeira abertura e troca imediata em Ajustes.
@@ -79,6 +80,27 @@ A pasta padrão é `Downloads` dentro da pasta do launcher. Use **Escolher pasta
 
 Projetos grandes podem demorar. Se a API do GitHub limitar as requisições, preencha um **token do GitHub** em **Ajustes → Tracker** — ele é opcional e fica salvo apenas em `data\config.json`.
 
+## Jogar (DexNom)
+
+A aba **Jogar** integra o **DexNom Runtime**, fork do VIctory para placas AMD Radeon. O launcher **não baixa o jogo**: você aponta para o executável da sua própria cópia de GTA VI (Xbox Series X|S) e para a pasta da fork baixada na aba **Downloads**.
+
+**Pré-requisitos para preparar o runtime**
+
+- Windows 10/11 64-bit com driver Direct3D 12 atualizado.
+- Rust (rustup + Cargo): <https://rustup.rs/>.
+- Visual Studio Build Tools com a carga **Desenvolvimento para desktop com C++** e o **Windows SDK**.
+- Pelo menos 5 GB livres no disco da fork.
+- GPU compatível com mesh shaders e Shader Model 6.6. O DexNom foi testado em Radeon RX 7900 XTX; placas mais antigas podem não rodar.
+
+**Como usar**
+
+1. Baixe a fork DexNom na aba **Downloads** (ou escolha a pasta de uma cópia já extraída).
+2. Abra **Jogar** e confira se a fork e o executável do jogo foram detectados. Use **Escolher pasta** e **Escolher .exe** se precisar. A pasta de instalação padrão é `%LOCALAPPDATA%\DexNom Runtime`; use **Escolher pasta** na linha **Pasta de instalação** para instalar em outro disco ou pasta.
+3. Clique em **Preparar / atualizar**. O launcher roda o `Setup-DexNomRuntime.ps1` da fork com a pasta escolhida, mostra o log ao vivo e instala o runtime nessa pasta.
+4. Quando o runtime estiver pronto, clique em **Jogar**. O botão vira **Parar** enquanto o jogo estiver aberto. O ray tracing experimental pode ser ativado pelo interruptor `--rt`. Na tela inicial, **EXECUTAR** fica ao lado de **VER CORRIDA** e abre o jogo direto; se ainda faltar configuração, ele leva para esta aba.
+
+O log da preparação fica em `data\logs\dexnom-setup.log`. A fork é código de terceiros: compilar e executar roda código no seu PC. Use apenas com uma cópia legal do jogo.
+
 ## Hardware
 
 A aba **Hardware** detecta o PC atual pelo Windows e transforma cada componente em uma nota de 0 a 100. Depois compara essa nota com o alvo escolhido e mostra o veredito **Pronto para o alvo**, **Jogável com ajustes** ou **Abaixo do recomendado**.
@@ -133,15 +155,15 @@ PortWatch Hub/
   INICIAR.cmd        inicializador: confere o Node, instala dependências e abre
   CRIAR-ATALHO.cmd   cria o atalho na área de trabalho
   ABRIR-LAUNCHER.vbs abre sem janela de console
-  main.js            processo principal (janela, IPC, tracker, forks, downloads)
+  main.js            processo principal (janela, IPC, tracker, forks, downloads, DexNom)
   hardware-main.js   detecção de hardware isolada
   preload.js         ponte segura para o renderer (window.portwatch)
   preview.js         servidor de preview com proxies do tracker e forks
   app/
     index.html       marcação da interface
     styles.css       cena, vidro, tipografia e animações
-    portwatch.css    identidade PortWatch, corrida, downloads e tema Los Santos
-    app.js           estado, corrida, downloads, ajustes, idioma e navegação
+    portwatch.css    identidade PortWatch, corrida, downloads, DexNom e tema Los Santos
+    app.js           estado, corrida, downloads, DexNom, ajustes, idioma e navegação
     radio.js         sintetizador das estações
     hardware.js      interface e cálculo do verificador de hardware
     scene.js         estrelas, skyline, parallax e relógio
@@ -153,6 +175,7 @@ PortWatch Hub/
     make-shortcut.ps1 cria o atalho da área de trabalho
     ...              captura de tela, teste via CDP e gerador de ícone
   data/config.json   preferências salvas (criado em tempo de execução)
+  data/logs/         log da preparação do DexNom (criado em tempo de execução)
 ```
 
 O ícone da janela e do atalho é `app\assets\icon.ico`. Para trocar, substitua `icon.png` e rode `npm run icon`; o script gera um ICO com tamanhos de 16 a 256 px. O `CRIAR-ATALHO.cmd` usa esse ícone.
@@ -171,6 +194,8 @@ O ícone da janela e do atalho é `app\assets\icon.ico`. Para trocar, substitua 
 - **Lista de forks vazia:** a API do GitHub pode ter atingido o limite. Preencha um token em **Ajustes → Tracker** e atualize.
 - **Download falhou:** confira a conexão e o espaço em disco. O detalhe do erro aparece no diálogo.
 - **O ZIP não extraiu:** feche o arquivo no Explorer e tente de novo; o download é mantido na pasta de downloads.
+- **“Faltam pré-requisitos” ao preparar o DexNom:** instale o Rust e o Visual Studio Build Tools com a carga C++ e o Windows SDK; clique em **Verificar** depois. O comando `winget` sugerido na tela instala os Build Tools.
+- **O DexNom não inicia o jogo:** confirme que o runtime foi preparado, que o `.exe` apontado é o da instalação correta e que a GPU suporta mesh shaders/Shader Model 6.6. Veja o log em `data\logs\dexnom-setup.log` e os diagnósticos do runtime em `%LOCALAPPDATA%\DexNom Runtime\logs`.
 - **O launcher não abre:** rode `INICIAR.cmd`; ele mostra o que falta (Node.js, npm ou dependências) e tenta instalar. Se o atalho estiver apontando para uma pasta antiga, rode `CRIAR-ATALHO.cmd` de novo.
 
 ---

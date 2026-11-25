@@ -4,7 +4,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell, screen } = require('electron
 const path = require('node:path');
 const fs = require('node:fs');
 const https = require('node:https');
-const { execFile } = require('node:child_process');
+const { execFile, spawn } = require('node:child_process');
 const { createHardware } = require('./hardware-main');
 
 // Permite que as rádios comecem junto com o launcher, sem exigir um clique
@@ -20,6 +20,7 @@ const APP_DIR = path.join(__dirname, 'app');
 const DATA_DIR = path.join(__dirname, 'data');
 const CACHE_DIR = path.join(DATA_DIR, 'cache');
 const TMP_DIR = path.join(DATA_DIR, 'tmp');
+const LOGS_DIR = path.join(DATA_DIR, 'logs');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const TRACKER_CACHE = path.join(CACHE_DIR, 'tracker.json');
 const FORKS_CACHE = path.join(CACHE_DIR, 'forks.json');
@@ -34,6 +35,9 @@ const FORKS_API = `https://api.github.com/repos/${TRACKER_REPO}/forks?per_page=1
 const UA = 'PortWatch-Hub/2.0 (+https://portwatch-vi.xyz)';
 
 const DEFAULT_DOWNLOADS = path.join(__dirname, 'Downloads');
+const DEXNOM_SETUP_FILE = 'Setup-DexNomRuntime.ps1';
+const DEXNOM_PLAYER = 'victory-play.exe';
+const DEXNOM_SETUP_LOG = path.join(LOGS_DIR, 'dexnom-setup.log');
 
 const DEFAULTS = {
   language: null,
@@ -47,6 +51,11 @@ const DEFAULTS = {
   musicVolume: 55,
   startFullscreen: false,
   reduceMotion: false,
+  gameExe: '',
+  dexnomSource: '',
+  dexnomRuntime: '',
+  dexnomInstallDir: '',
+  dexnomRayTracing: false,
 };
 
 const CONFIG_KEYS = Object.keys(DEFAULTS);
@@ -55,6 +64,9 @@ const MAIN_I18N = {
   'pt-BR': {
     chooseDownloads: 'Escolher pasta de downloads',
     pickDownloadFolder: 'Escolha onde salvar esta fork',
+    chooseGameExe: 'Escolha o executável do GTA VI (Xbox Series X|S)',
+    chooseForkFolder: 'Escolha a pasta da fork DexNom',
+    chooseInstallDir: 'Escolha onde instalar o runtime DexNom',
     downloadFailed: 'Não foi possível baixar o projeto.',
     extractFailed: 'O download terminou, mas não foi possível extrair o ZIP.',
     invalidRepo: 'Repositório inválido.',
@@ -62,6 +74,9 @@ const MAIN_I18N = {
   en: {
     chooseDownloads: 'Choose downloads folder',
     pickDownloadFolder: 'Choose where to save this fork',
+    chooseGameExe: 'Choose the GTA VI executable (Xbox Series X|S)',
+    chooseForkFolder: 'Choose the DexNom fork folder',
+    chooseInstallDir: 'Choose where to install the DexNom runtime',
     downloadFailed: 'Could not download the project.',
     extractFailed: 'The download finished, but the ZIP could not be extracted.',
     invalidRepo: 'Invalid repository.',
@@ -69,6 +84,9 @@ const MAIN_I18N = {
   es: {
     chooseDownloads: 'Elegir carpeta de descargas',
     pickDownloadFolder: 'Elige dónde guardar esta fork',
+    chooseGameExe: 'Elige el ejecutable de GTA VI (Xbox Series X|S)',
+    chooseForkFolder: 'Elige la carpeta de la fork DexNom',
+    chooseInstallDir: 'Elige dónde instalar el runtime DexNom',
     downloadFailed: 'No se pudo descargar el proyecto.',
     extractFailed: 'La descarga terminó, pero no se pudo extraer el ZIP.',
     invalidRepo: 'Repositorio inválido.',
@@ -94,7 +112,7 @@ function mt(key) {
 // ---------------------------------------------------------------------------
 
 function ensureDirs() {
-  for (const dir of [DATA_DIR, CACHE_DIR, TMP_DIR]) {
+  for (const dir of [DATA_DIR, CACHE_DIR, TMP_DIR, LOGS_DIR]) {
     try {
       fs.mkdirSync(dir, { recursive: true });
     } catch {
@@ -121,6 +139,10 @@ function sanitizeConfig(patch) {
   if (next.downloadsDir != null && typeof next.downloadsDir !== 'string') {
     next.downloadsDir = DEFAULT_DOWNLOADS;
   }
+  for (const key of ['gameExe', 'dexnomSource', 'dexnomRuntime', 'dexnomInstallDir']) {
+    if (next[key] != null && typeof next[key] !== 'string') next[key] = '';
+  }
+  if (next.dexnomRayTracing != null) next.dexnomRayTracing = Boolean(next.dexnomRayTracing);
   if (next.githubToken != null) next.githubToken = String(next.githubToken).slice(0, 300);
   return next;
 }
@@ -563,6 +585,359 @@ function openDownloaded(name) {
 }
 
 // ---------------------------------------------------------------------------
+// DexNom Runtime — preparar e jogar
+// ---------------------------------------------------------------------------
+
+let dexnomSetup = null;
+let dexnomGame = null;
+
+function isFile(target) {
+  try {
+    return Boolean(target) && fs.statSync(target).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function isDir(target) {
+  try {
+    return Boolean(target) && fs.statSync(target).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function sendToWindow(channel, payload) {
+  if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+}
+
+function sendSetup(payload) {
+  sendToWindow('dexnom:setup', payload);
+}
+
+function sendGame(payload) {
+  sendToWindow('dexnom:game', payload);
+}
+
+function execText(file, args, timeout = 15000) {
+  return new Promise((resolve) => {
+    execFile(
+      file,
+      args,
+      { timeout, windowsHide: true, maxBuffer: 1024 * 1024 },
+      (err, stdout, stderr) => {
+        resolve({
+          ok: !err,
+          stdout: String(stdout || '').trim(),
+          stderr: String(stderr || '').trim(),
+          error: err ? String(err.message || err) : '',
+        });
+      }
+    );
+  });
+}
+
+function dexnomSetupIn(dir) {
+  if (!isDir(dir)) return null;
+  if (isFile(path.join(dir, DEXNOM_SETUP_FILE))) return path.resolve(dir);
+  let entries = [];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  const matches = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const child = path.join(dir, entry.name);
+    if (isFile(path.join(child, DEXNOM_SETUP_FILE))) matches.push(child);
+  }
+  return matches.length === 1 ? path.resolve(matches[0]) : null;
+}
+
+function hasVictoryRoot(dir) {
+  let current = path.resolve(dir);
+  for (;;) {
+    if (isFile(path.join(current, '.victory-root'))) return true;
+    const parent = path.dirname(current);
+    if (parent === current) return false;
+    current = parent;
+  }
+}
+
+function findDexnomSource() {
+  const candidates = [];
+  const seen = new Set();
+  const add = (dir) => {
+    if (!dir) return;
+    const resolved = path.resolve(dir);
+    const key = resolved.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push(resolved);
+  };
+
+  add(cfg.dexnomSource);
+  for (const root of [cfg.downloadsDir || DEFAULT_DOWNLOADS, DEFAULT_DOWNLOADS]) {
+    add(root);
+    try {
+      for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+        if (entry.isDirectory()) add(path.join(root, entry.name));
+      }
+    } catch {
+      /* pasta de downloads ainda não existe */
+    }
+  }
+
+  for (const dir of candidates) {
+    const source = dexnomSetupIn(dir);
+    if (source) return source;
+  }
+  return null;
+}
+
+function dexnomGameExe() {
+  return isFile(cfg.gameExe) && /\.exe$/i.test(cfg.gameExe) ? cfg.gameExe : '';
+}
+
+function dexnomInstallTarget() {
+  const local = process.env.LOCALAPPDATA || '';
+  const chosen = cfg.dexnomInstallDir ? path.resolve(cfg.dexnomInstallDir) : '';
+  if (chosen) return chosen;
+  return local ? path.join(local, 'DexNom Runtime') : '';
+}
+
+function dexnomRuntime() {
+  const local = process.env.LOCALAPPDATA || '';
+  const candidates = [];
+  const seen = new Set();
+  const add = (dir) => {
+    if (!dir) return;
+    const resolved = path.resolve(dir);
+    const key = resolved.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push(resolved);
+  };
+
+  add(cfg.dexnomRuntime);
+  add(dexnomInstallTarget());
+  if (local) add(path.join(local, 'DexNom Runtime'));
+
+  for (const dir of candidates) {
+    const exe = path.join(dir, DEXNOM_PLAYER);
+    if (isFile(exe)) return { dir, exe };
+  }
+  return null;
+}
+
+async function checkRust() {
+  const cargo = await execText('where.exe', ['cargo']);
+  const rustup = await execText('where.exe', ['rustup']);
+  if (!cargo.ok || !rustup.ok) {
+    return {
+      ok: false,
+      cargo: cargo.ok ? cargo.stdout.split(/\r?\n/)[0] : '',
+      rustup: rustup.ok ? rustup.stdout.split(/\r?\n/)[0] : '',
+    };
+  }
+  let version = '';
+  const info = await execText('cargo', ['--version']);
+  if (info.ok) version = info.stdout.split(/\r?\n/)[0];
+  return {
+    ok: true,
+    version,
+    cargo: cargo.stdout.split(/\r?\n/)[0],
+    rustup: rustup.stdout.split(/\r?\n/)[0],
+  };
+}
+
+async function checkMsvc() {
+  const vswhere = path.join(
+    process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)',
+    'Microsoft Visual Studio',
+    'Installer',
+    'vswhere.exe'
+  );
+  let installPath = '';
+  if (isFile(vswhere)) {
+    const result = await execText(vswhere, [
+      '-latest',
+      '-products',
+      '*',
+      '-requires',
+      'Microsoft.VisualStudio.Component.VC.Tools.x86.x64',
+      '-property',
+      'installationPath',
+    ]);
+    if (result.ok && result.stdout) installPath = result.stdout.split(/\r?\n/)[0];
+  }
+  if (!installPath) {
+    const link = await execText('where.exe', ['link.exe']);
+    if (link.ok && link.stdout) installPath = path.dirname(link.stdout.split(/\r?\n/)[0]);
+  }
+
+  let sdk = false;
+  const sdkRoot = path.join(
+    process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)',
+    'Windows Kits',
+    '10',
+    'Lib'
+  );
+  try {
+    sdk = fs
+      .readdirSync(sdkRoot, { withFileTypes: true })
+      .some((entry) => entry.isDirectory() && isDir(path.join(sdkRoot, entry.name, 'um', 'x64')));
+  } catch {
+    /* SDK não encontrado */
+  }
+
+  return { ok: Boolean(installPath), path: installPath, sdk };
+}
+
+function freeSpaceGB(dir) {
+  try {
+    const stats = fs.statfsSync(dir);
+    return Math.round((stats.bavail * stats.bsize) / 1024 ** 3);
+  } catch {
+    return null;
+  }
+}
+
+async function dexnomStatus() {
+  const source = findDexnomSource();
+  const runtime = dexnomRuntime();
+  const gameExe = dexnomGameExe();
+  const installDir = dexnomInstallTarget();
+  const installExists = isDir(installDir);
+  const [rust, msvc] = await Promise.all([checkRust(), checkMsvc()]);
+
+  return {
+    ok: true,
+    platform: process.platform,
+    source: source ? { dir: source, setup: path.join(source, DEXNOM_SETUP_FILE) } : null,
+    gameExe,
+    installDir,
+    installExists,
+    installDefault: !cfg.dexnomInstallDir,
+    runtime: runtime ? { dir: runtime.dir, exe: runtime.exe } : null,
+    rust,
+    msvc,
+    diskFreeGB: freeSpaceGB(installDir || source || cfg.downloadsDir || DEFAULT_DOWNLOADS),
+    setup: dexnomSetup
+      ? { running: true, startedAt: dexnomSetup.startedAt, lines: dexnomSetup.lines.slice(-600) }
+      : { running: false },
+    game: dexnomGame ? { running: true, pid: dexnomGame.pid } : { running: false },
+    rt: Boolean(cfg.dexnomRayTracing),
+    logPath: DEXNOM_SETUP_LOG,
+  };
+}
+
+function appendSetupLog(line) {
+  try {
+    fs.appendFileSync(DEXNOM_SETUP_LOG, line + '\r\n', 'utf8');
+  } catch {
+    /* log é opcional */
+  }
+}
+
+function killTree(pid) {
+  if (!pid) return;
+  execFile('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }, () => {});
+}
+
+function startDexnomSetup(source, gameExe, installDir) {
+  ensureDirs();
+  const setup = path.join(source, DEXNOM_SETUP_FILE);
+  try {
+    fs.writeFileSync(
+      DEXNOM_SETUP_LOG,
+      `PortWatch Hub - preparacao do DexNom\r\n${new Date().toISOString()}\r\n` +
+        `fonte: ${source}\r\njogo: ${gameExe}\r\ninstalacao: ${installDir}\r\n\r\n`,
+      'utf8'
+    );
+  } catch {
+    /* segue sem arquivo de log */
+  }
+
+  const args = [
+    '-NoLogo',
+    '-NoProfile',
+    '-STA',
+    '-ExecutionPolicy',
+    'Bypass',
+    '-File',
+    setup,
+    '-GamePath',
+    gameExe,
+    '-InstallDir',
+    installDir,
+  ];
+  const child = spawn('powershell.exe', args, {
+    cwd: source,
+    windowsHide: true,
+    env: { ...process.env },
+  });
+
+  const run = { child, canceled: false, startedAt: Date.now(), lines: [] };
+  dexnomSetup = run;
+  sendSetup({ type: 'start', at: run.startedAt });
+
+  let buffer = '';
+  const onChunk = (stream) => (chunk) => {
+    buffer += chunk.toString('utf8').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const parts = buffer.split('\n');
+    buffer = parts.pop();
+    for (const raw of parts) {
+      const line = raw.replace(/\u0000/g, '').trimEnd();
+      if (!line) continue;
+      run.lines.push(line);
+      if (run.lines.length > 400) run.lines.shift();
+      appendSetupLog(line);
+      sendSetup({ type: 'line', stream, line });
+    }
+  };
+
+  child.stdout.on('data', onChunk('stdout'));
+  child.stderr.on('data', onChunk('stderr'));
+
+  child.on('error', (err) => {
+    const line = String(err && err.message ? err.message : err);
+    appendSetupLog(line);
+    sendSetup({ type: 'line', stream: 'stderr', line });
+  });
+
+  child.on('close', (code) => {
+    if (buffer.trim()) {
+      const line = buffer.trim();
+      run.lines.push(line);
+      appendSetupLog(line);
+      sendSetup({ type: 'line', stream: 'stdout', line });
+    }
+    if (dexnomSetup === run) dexnomSetup = null;
+
+    if (run.canceled) {
+      sendSetup({ type: 'done', canceled: true, code });
+      return;
+    }
+
+    const runtime = dexnomRuntime();
+    if (code === 0 && runtime) {
+      saveConfig({ dexnomRuntime: runtime.dir });
+      sendSetup({ type: 'done', ok: true, code, runtime });
+      return;
+    }
+
+    sendSetup({
+      type: 'error',
+      code: code === 0 ? 'missing' : 'build',
+      exitCode: code,
+      tail: run.lines.slice(-14).join('\n'),
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Janela
 // ---------------------------------------------------------------------------
 
@@ -680,6 +1055,156 @@ ipcMain.handle('download:choose-dir', async () => {
   if (result.canceled || !result.filePaths.length) return { ok: false, canceled: true };
   const saved = saveConfig({ downloadsDir: result.filePaths[0] });
   return { ok: true, dir: saved.downloadsDir };
+});
+
+// ---------------------------------------------------------------------------
+// DexNom Runtime
+// ---------------------------------------------------------------------------
+
+ipcMain.handle('dexnom:status', () => dexnomStatus());
+
+ipcMain.handle('dexnom:choose-game', async () => {
+  const result = await dialog.showOpenDialog(win, {
+    title: mt('chooseGameExe'),
+    properties: ['openFile'],
+    filters: [{ name: 'Executável', extensions: ['exe'] }],
+    defaultPath: cfg.gameExe ? path.dirname(cfg.gameExe) : cfg.downloadsDir || DEFAULT_DOWNLOADS,
+  });
+  if (result.canceled || !result.filePaths.length) {
+    return { ok: false, canceled: true, status: await dexnomStatus() };
+  }
+  const chosen = result.filePaths[0];
+  if (!isFile(chosen) || !/\.exe$/i.test(chosen)) {
+    return { ok: false, error: 'game', status: await dexnomStatus() };
+  }
+  saveConfig({ gameExe: chosen });
+  return { ok: true, status: await dexnomStatus() };
+});
+
+ipcMain.handle('dexnom:choose-source', async () => {
+  const result = await dialog.showOpenDialog(win, {
+    title: mt('chooseForkFolder'),
+    properties: ['openDirectory'],
+    defaultPath: cfg.dexnomSource ? path.dirname(cfg.dexnomSource) : cfg.downloadsDir || DEFAULT_DOWNLOADS,
+  });
+  if (result.canceled || !result.filePaths.length) {
+    return { ok: false, canceled: true, status: await dexnomStatus() };
+  }
+  const source = dexnomSetupIn(result.filePaths[0]);
+  if (!source) return { ok: false, error: 'source', status: await dexnomStatus() };
+  saveConfig({ dexnomSource: source });
+  return { ok: true, status: await dexnomStatus() };
+});
+
+ipcMain.handle('dexnom:choose-install', async () => {
+  const result = await dialog.showOpenDialog(win, {
+    title: mt('chooseInstallDir'),
+    properties: ['openDirectory', 'createDirectory'],
+    defaultPath: dexnomInstallTarget() || cfg.downloadsDir || DEFAULT_DOWNLOADS,
+  });
+  if (result.canceled || !result.filePaths.length) {
+    return { ok: false, canceled: true, status: await dexnomStatus() };
+  }
+  const chosen = result.filePaths[0];
+  if (hasVictoryRoot(chosen)) {
+    return { ok: false, error: 'install', status: await dexnomStatus() };
+  }
+  saveConfig({ dexnomInstallDir: chosen, dexnomRuntime: '' });
+  return { ok: true, status: await dexnomStatus() };
+});
+
+ipcMain.handle('dexnom:prepare', async () => {
+  if (dexnomSetup) return { ok: false, error: 'busy' };
+  const status = await dexnomStatus();
+  if (!status.source) return { ok: false, error: 'source' };
+  if (!status.gameExe) return { ok: false, error: 'game' };
+  if (!status.installDir) return { ok: false, error: 'install' };
+  if (hasVictoryRoot(status.installDir)) return { ok: false, error: 'install' };
+  if (!status.rust.ok) return { ok: false, error: 'rust' };
+  if (!status.msvc.ok || !status.msvc.sdk) return { ok: false, error: 'msvc' };
+  if (status.diskFreeGB != null && status.diskFreeGB < 5) {
+    return { ok: false, error: 'disk', freeGB: status.diskFreeGB };
+  }
+  try {
+    startDexnomSetup(status.source.dir, status.gameExe, status.installDir);
+    return { ok: true, started: true };
+  } catch (err) {
+    return { ok: false, error: 'spawn', detail: String(err.message || err) };
+  }
+});
+
+ipcMain.handle('dexnom:cancel', () => {
+  if (!dexnomSetup) return { ok: false, error: 'idle' };
+  dexnomSetup.canceled = true;
+  killTree(dexnomSetup.child.pid);
+  return { ok: true };
+});
+
+ipcMain.handle('dexnom:launch', async () => {
+  if (dexnomGame) return { ok: false, error: 'running' };
+  const runtime = dexnomRuntime();
+  if (!runtime) return { ok: false, error: 'runtime' };
+  const gameExe = dexnomGameExe();
+  if (!gameExe) return { ok: false, error: 'game' };
+
+  // Mantém o jogo escolhido no launcher sincronizado com o runtime.
+  try {
+    fs.writeFileSync(path.join(runtime.dir, 'game-path.txt'), gameExe, 'utf8');
+  } catch {
+    /* o runtime ainda pode usar o caminho gravado pelo setup */
+  }
+
+  const args = cfg.dexnomRayTracing ? ['--rt'] : [];
+  let child;
+  try {
+    child = spawn(runtime.exe, args, {
+      cwd: runtime.dir,
+      windowsHide: false,
+      env: { ...process.env },
+    });
+  } catch (err) {
+    return { ok: false, error: 'spawn', detail: String(err.message || err) };
+  }
+
+  const run = { child, pid: child.pid, startedAt: Date.now() };
+  dexnomGame = run;
+  sendGame({ running: true, pid: run.pid, startedAt: run.startedAt });
+
+  child.on('error', (err) => {
+    if (dexnomGame === run) dexnomGame = null;
+    sendGame({ running: false, error: String(err.message || err) });
+  });
+
+  child.on('close', (code) => {
+    if (dexnomGame === run) dexnomGame = null;
+    sendGame({ running: false, code });
+  });
+
+  return { ok: true, pid: run.pid };
+});
+
+ipcMain.handle('dexnom:stop', () => {
+  if (!dexnomGame) return { ok: false, error: 'idle' };
+  const pid = dexnomGame.pid;
+  killTree(pid);
+  return { ok: true, pid };
+});
+
+ipcMain.handle('dexnom:open', async (_event, kind) => {
+  try {
+    if (kind === 'log') {
+      if (!fs.existsSync(DEXNOM_SETUP_LOG)) return { ok: false, missing: true };
+      shell.showItemInFolder(DEXNOM_SETUP_LOG);
+      return { ok: true };
+    }
+    const target = kind === 'source' ? findDexnomSource() : kind === 'runtime' ? dexnomRuntime()?.dir : '';
+    if (!target) return { ok: false, missing: true };
+    if (!fs.existsSync(target)) return { ok: false, missing: true };
+    const error = await shell.openPath(target);
+    return error ? { ok: false, error } : { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err.message || err) };
+  }
 });
 
 ipcMain.handle('shell:openPath', async (_event, kind) => {

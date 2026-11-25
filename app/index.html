@@ -28,6 +28,8 @@
     <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10.8" cy="10.8" r="6.2"/><path d="m15.4 15.4 4.1 4.1"/></symbol>
     <symbol id="i-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.8 12h4.1l2-5.4 3.6 11 2.3-5.6h6.4"/></symbol>
     <symbol id="i-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8.4 7.5-4.8 4.5 4.8 4.5M15.6 7.5l4.8 4.5-4.8 4.5M13.3 4.8l-2.6 14.4"/></symbol>
+    <symbol id="i-gamepad" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7.4 8h9.2a3.6 3.6 0 0 1 3.5 2.8l.9 4a2.4 2.4 0 0 1-4.2 2l-1.2-1.5H8.4l-1.2 1.5a2.4 2.4 0 0 1-4.2-2l.9-4A3.6 3.6 0 0 1 7.4 8Z"/><path d="M7.6 10.8v2.6M6.3 12.1h2.6M16 11.4h.01M18 13.2h.01"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="2"/></symbol>
   </svg>
 
   <!-- ======================= CENA ======================= -->
@@ -252,6 +254,10 @@
           <span class="play-badge"><svg class="ic"><use href="#i-trophy"></use></svg></span>
           <span class="play-label" data-i18n="hero.race">VER CORRIDA</span>
         </button>
+        <button class="btn-play btn-play-alt" id="homePlay" title="Executar o GTA VI com a fork DexNom" data-i18n-title="hero.playTitle">
+          <span class="play-badge"><svg class="ic"><use href="#i-gamepad"></use></svg></span>
+          <span class="play-label" data-i18n="hero.play">EXECUTAR</span>
+        </button>
         <button class="btn-round" id="siteBtn" title="Abrir o site do PortWatch" aria-label="Abrir o site do PortWatch" data-i18n-title="hero.site" data-i18n-aria="hero.site">
           <svg class="ic"><use href="#i-external"></use></svg>
         </button>
@@ -314,6 +320,7 @@
   <footer class="dock glass">
     <nav class="tabs" aria-label="Navegação" data-i18n-aria="nav.aria">
       <button class="tab is-active" data-nav="home" data-i18n="nav.home">Início</button>
+      <button class="tab" data-nav="play" data-i18n="nav.play">Jogar</button>
       <button class="tab" data-nav="race" data-i18n="nav.race">Corrida</button>
       <button class="tab" data-nav="downloads" data-i18n="nav.downloads">Downloads</button>
       <button class="tab" data-nav="hardware" data-i18n="nav.hardware">Hardware</button>
@@ -341,7 +348,7 @@
           <p class="radio-menu-foot" data-i18n="radio.foot">Sintetizador local · todas no mesmo estilo</p>
         </div>
       </div>
-      <span class="build-tag" id="versionTag">v2.0.0</span>
+      <span class="build-tag" id="versionTag">v2.1.0</span>
     </div>
   </footer>
 
@@ -405,6 +412,139 @@
           </div>
 
           <p class="note" id="raceNote"></p>
+        </div>
+
+        <!-- JOGAR -->
+        <div class="view" data-view="play">
+          <div class="view-head">
+            <div class="view-head-copy">
+              <p class="view-sub" data-i18n="play.sub">Inicie o GTA VI com a fork DexNom instalada no seu PC. O launcher prepara o runtime, guarda o caminho do seu jogo e abre o jogo.</p>
+            </div>
+            <div class="view-head-actions">
+              <button class="mini-btn" id="playRefresh" type="button"><svg class="ic"><use href="#i-refresh"></use></svg><span data-i18n="play.refresh">Verificar</span></button>
+            </div>
+          </div>
+
+          <section class="play-hero">
+            <div class="play-hero-copy">
+              <span class="label" data-i18n="play.kicker">DEXNOM RUNTIME</span>
+              <h3>DexNom Runtime</h3>
+              <p data-i18n="play.desc">Fork do VIctory para AMD Radeon. Compila e instala o runtime no seu PC, sem baixar arquivos do jogo.</p>
+              <div class="play-tags">
+                <span class="play-tag">AMD Radeon</span>
+                <span class="play-tag">Direct3D 12</span>
+                <span class="play-tag" data-i18n="play.tagRt">Ray tracing opcional</span>
+              </div>
+            </div>
+            <div class="play-hero-art" aria-hidden="true">
+              <svg class="ic"><use href="#i-gamepad"></use></svg>
+            </div>
+          </section>
+
+          <div class="play-grid">
+            <section class="play-card">
+              <div class="group-head">
+                <h3 data-i18n="play.setupTitle">Preparação</h3>
+                <span class="play-state" id="playSetupState">—</span>
+              </div>
+
+              <ul class="play-checks">
+                <li class="play-check" id="playCheckSource">
+                  <span class="play-dot" aria-hidden="true"></span>
+                  <div class="play-check-main">
+                    <b data-i18n="play.source">Fork DexNom</b>
+                    <small class="play-path" id="playSourcePath">—</small>
+                  </div>
+                  <button class="mini-btn" id="playChooseSource" type="button"><svg class="ic"><use href="#i-folder"></use></svg><span data-i18n="play.chooseSource">Escolher pasta</span></button>
+                </li>
+                <li class="play-check" id="playCheckGame">
+                  <span class="play-dot" aria-hidden="true"></span>
+                  <div class="play-check-main">
+                    <b data-i18n="play.game">Executável do jogo</b>
+                    <small class="play-path" id="playGamePath">—</small>
+                  </div>
+                  <button class="mini-btn" id="playChooseGame" type="button"><svg class="ic"><use href="#i-folder"></use></svg><span data-i18n="play.chooseGame">Escolher .exe</span></button>
+                </li>
+                <li class="play-check" id="playCheckInstall">
+                  <span class="play-dot" aria-hidden="true"></span>
+                  <div class="play-check-main">
+                    <b data-i18n="play.installDir">Pasta de instalação</b>
+                    <small class="play-path" id="playInstallPath">—</small>
+                  </div>
+                  <button class="mini-btn" id="playChooseInstall" type="button"><svg class="ic"><use href="#i-folder"></use></svg><span data-i18n="play.chooseInstall">Escolher pasta</span></button>
+                </li>
+                <li class="play-check" id="playCheckRust">
+                  <span class="play-dot" aria-hidden="true"></span>
+                  <div class="play-check-main">
+                    <b>Rust / Cargo</b>
+                    <small class="play-path" id="playRustPath">—</small>
+                  </div>
+                  <button class="mini-btn" id="playRustHelp" type="button"><svg class="ic"><use href="#i-external"></use></svg><span data-i18n="play.help">Ajuda</span></button>
+                </li>
+                <li class="play-check" id="playCheckMsvc">
+                  <span class="play-dot" aria-hidden="true"></span>
+                  <div class="play-check-main">
+                    <b>Visual Studio Build Tools + Windows SDK</b>
+                    <small class="play-path" id="playMsvcPath">—</small>
+                  </div>
+                  <button class="mini-btn" id="playMsvcHelp" type="button"><svg class="ic"><use href="#i-external"></use></svg><span data-i18n="play.help">Ajuda</span></button>
+                </li>
+                <li class="play-check" id="playCheckRuntime">
+                  <span class="play-dot" aria-hidden="true"></span>
+                  <div class="play-check-main">
+                    <b data-i18n="play.runtime">Runtime instalado</b>
+                    <small class="play-path" id="playRuntimePath">—</small>
+                  </div>
+                  <button class="mini-btn" id="playOpenRuntime" type="button"><svg class="ic"><use href="#i-folder"></use></svg><span data-i18n="play.open">Abrir</span></button>
+                </li>
+              </ul>
+
+              <div class="play-prereq" id="playPrereq" hidden>
+                <b data-i18n="play.prereqTitle">Faltam pré-requisitos</b>
+                <p id="playPrereqText"></p>
+                <div class="play-prereq-actions">
+                  <button class="mini-btn" id="playPrereqRust" type="button" hidden><svg class="ic"><use href="#i-external"></use></svg><span data-i18n="play.openRust">Abrir rustup.rs</span></button>
+                  <button class="mini-btn" id="playPrereqMsvc" type="button" hidden><svg class="ic"><use href="#i-external"></use></svg><span data-i18n="play.openMsvc">Abrir Build Tools</span></button>
+                </div>
+                <code class="play-cmd" id="playMsvcCmd">winget install Microsoft.VisualStudio.2022.BuildTools --override "--quiet --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"</code>
+              </div>
+
+              <div class="play-actions">
+                <button class="btn-primary" id="playPrepare" type="button"><svg class="ic"><use href="#i-play"></use></svg><span data-i18n="play.prepare">Preparar / atualizar</span></button>
+                <button class="mini-btn" id="playCancelSetup" type="button" hidden><span data-i18n="play.cancel">Cancelar</span></button>
+                <button class="mini-btn" id="playOpenSource" type="button"><svg class="ic"><use href="#i-folder"></use></svg><span data-i18n="play.openSource">Abrir fork</span></button>
+              </div>
+
+              <label class="play-rt">
+                <input type="checkbox" id="playRt">
+                <span data-i18n="play.rt">Ray tracing experimental (--rt)</span>
+              </label>
+              <p class="note" data-i18n="play.thirdParty">A fork é código de terceiros: compilar e executar roda código no seu PC. Use por sua conta e risco.</p>
+            </section>
+
+            <section class="play-card play-launch-card">
+              <span class="label" data-i18n="play.launchKicker">INICIAR</span>
+              <div class="play-state" id="playGameState">—</div>
+              <button class="play-main-btn" id="playLaunch" type="button" disabled>
+                <svg class="ic"><use href="#i-play"></use></svg>
+                <span id="playLaunchLabel" data-i18n="play.play">Jogar</span>
+              </button>
+              <p class="note" id="playGameNote" data-i18n="play.gameNote">Escolha o jogo e prepare a fork para liberar o botão.</p>
+              <div class="play-mini-actions">
+                <button class="mini-btn" id="playStop" type="button" hidden><svg class="ic"><use href="#i-stop"></use></svg><span data-i18n="play.stop">Parar</span></button>
+                <button class="mini-btn" id="playOpenLog" type="button" hidden><svg class="ic"><use href="#i-doc"></use></svg><span data-i18n="play.openLog">Abrir log</span></button>
+              </div>
+              <p class="note play-legal" data-i18n="play.legal">Use apenas com sua cópia legal do jogo. O PortWatch Hub não baixa nem distribui arquivos do jogo.</p>
+            </section>
+          </div>
+
+          <section class="play-card play-log" id="playLogCard" hidden>
+            <div class="group-head">
+              <h3 data-i18n="play.logTitle">Log da preparação</h3>
+              <button class="mini-btn" id="playLogClear" type="button"><span data-i18n="play.logClear">Limpar</span></button>
+            </div>
+            <pre id="playLog" aria-live="polite"></pre>
+          </section>
         </div>
 
         <!-- DOWNLOADS -->
@@ -680,7 +820,7 @@
             <div class="about-mark pw-about-mark"><span>PW</span></div>
             <div class="about-id">
               <p class="kicker" data-i18n="about.kicker">PORTWATCH HUB</p>
-              <h3 id="aboutVersion">v2.0.0</h3>
+              <h3 id="aboutVersion">v2.1.0</h3>
               <p data-i18n-html="about.description">Uma central de mesa para a corrida do <b>PortWatch VI</b>: leaderboard ao vivo, downloads de projetos e forks, e verificação de hardware.</p>
             </div>
           </div>
