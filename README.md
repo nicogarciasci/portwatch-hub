@@ -9,6 +9,14 @@ Feito por **Nicolas Garcia (Nico.SCI)**.
 - Site da corrida: <https://portwatch-vi.xyz/#top>
 - Tracker no GitHub: <https://github.com/4lwayz/portwatch-vi>
 
+## Baixar pronto para usar
+
+[![Baixar para Windows](https://img.shields.io/badge/baixar-Windows%20port%C3%A1til-ff6b9d?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/breelybr-pixel/portwatch-hub/releases/latest)
+
+Baixe o ZIP na página de **[Releases](https://github.com/breelybr-pixel/portwatch-hub/releases/latest)**, extraia e abra **PortWatch Hub.exe**. Não precisa de Git nem Node.js. Requisitos: Windows 10/11 64-bit.
+
+Se o Windows SmartScreen avisar que o app não tem assinatura, clique em **Mais informações → Executar assim mesmo**.
+
 ## O que ele faz
 
 - **Corrida ao vivo:** busca `data/tracker.json` do repositório oficial e aplica o mesmo modelo de pontuação do site (Groundwork → Exe runs → First frame → Main menu → In the world → Playable → Complete, com as trilhas story/render/performance/stability).
