@@ -21,7 +21,7 @@ Se o Windows SmartScreen avisar que o app não tem assinatura, clique em **Mais 
 
 - **Corrida ao vivo:** busca `data/tracker.json` do repositório oficial e aplica o mesmo modelo de pontuação do site (Groundwork → Exe runs → First frame → Main menu → In the world → Playable → Complete, com as trilhas story/render/performance/stability).
 - **Leaderboard completo:** projetos ranqueados, builds privadas, watchlist e projetos desativados, com filtros por alvo (GTA VI ou camadas gerais) e ordenação por progresso, estrelas ou atividade.
-- **Downloads integrados:** lista todos os projetos públicos do tracker e todos os forks do PortWatch, com busca, progresso e extração automática do ZIP.
+- **Downloads integrados:** lista todos os projetos públicos do tracker e todos os forks do PortWatch, com busca, progresso e extração automática do ZIP. Ao baixar uma fork, o launcher pergunta em qual pasta você quer salvar.
 - **Hardware:** detecta CPU, GPU, VRAM, RAM e armazenamento, permite simular outras peças e compara o PC com alvos de 1080p a 4K.
 - **Temas:** **Vice City** (padrão) e **Los Santos**, com cenário, cores e rádio próprios.
 - **Trilíngue:** Português (Brasil), English e Español, com escolha na primeira abertura e troca imediata em Ajustes.

@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('portwatch', {
   saveConfig: (patch) => ipcRenderer.invoke('config:save', patch),
   resetConfig: () => ipcRenderer.invoke('config:reset'),
   download: (payload) => ipcRenderer.invoke('download:repo', payload),
+  pickDownloadDir: () => ipcRenderer.invoke('download:pick-dir'),
   downloads: () => ipcRenderer.invoke('download:list'),
   openDownload: (name) => ipcRenderer.invoke('download:open', name),
   chooseDownloadsDir: () => ipcRenderer.invoke('download:choose-dir'),

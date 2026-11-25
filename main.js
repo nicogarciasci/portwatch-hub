@@ -54,18 +54,21 @@ const CONFIG_KEYS = Object.keys(DEFAULTS);
 const MAIN_I18N = {
   'pt-BR': {
     chooseDownloads: 'Escolher pasta de downloads',
+    pickDownloadFolder: 'Escolha onde salvar esta fork',
     downloadFailed: 'Não foi possível baixar o projeto.',
     extractFailed: 'O download terminou, mas não foi possível extrair o ZIP.',
     invalidRepo: 'Repositório inválido.',
   },
   en: {
     chooseDownloads: 'Choose downloads folder',
+    pickDownloadFolder: 'Choose where to save this fork',
     downloadFailed: 'Could not download the project.',
     extractFailed: 'The download finished, but the ZIP could not be extracted.',
     invalidRepo: 'Invalid repository.',
   },
   es: {
     chooseDownloads: 'Elegir carpeta de descargas',
+    pickDownloadFolder: 'Elige dónde guardar esta fork',
     downloadFailed: 'No se pudo descargar el proyecto.',
     extractFailed: 'La descarga terminó, pero no se pudo extraer el ZIP.',
     invalidRepo: 'Repositorio inválido.',
@@ -447,13 +450,17 @@ function flattenExtracted(dir) {
   }
 }
 
-async function downloadRepo({ repo, branch, name } = {}) {
+async function downloadRepo({ repo, branch, name, dir } = {}) {
   if (typeof repo !== 'string' || !REPO_RE.test(repo)) {
     return { ok: false, error: 'invalid', detail: mt('invalidRepo') };
   }
 
   const label = safeName(name || repo.split('/')[1]);
-  const destination = path.resolve(cfg.downloadsDir || DEFAULT_DOWNLOADS, label);
+  const baseDir =
+    typeof dir === 'string' && dir.trim()
+      ? path.resolve(dir)
+      : path.resolve(cfg.downloadsDir || DEFAULT_DOWNLOADS);
+  const destination = path.join(baseDir, label);
   const zipPath = path.join(TMP_DIR, `${label}-${Date.now()}.zip`);
   ensureDirs();
   fs.mkdirSync(path.dirname(destination), { recursive: true });
@@ -653,6 +660,16 @@ ipcMain.handle('config:reset', () => {
 ipcMain.handle('download:repo', (_event, payload) => downloadRepo(payload || {}));
 ipcMain.handle('download:list', () => listDownloads());
 ipcMain.handle('download:open', (_event, name) => openDownloaded(name));
+
+ipcMain.handle('download:pick-dir', async () => {
+  const result = await dialog.showOpenDialog(win, {
+    title: mt('pickDownloadFolder'),
+    properties: ['openDirectory', 'createDirectory'],
+    defaultPath: cfg.downloadsDir || DEFAULT_DOWNLOADS,
+  });
+  if (result.canceled || !result.filePaths.length) return { ok: false, canceled: true };
+  return { ok: true, dir: result.filePaths[0] };
+});
 
 ipcMain.handle('download:choose-dir', async () => {
   const result = await dialog.showOpenDialog(win, {

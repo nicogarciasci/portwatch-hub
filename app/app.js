@@ -47,6 +47,7 @@ const state = {
   forksError: null,
   downloads: { dir: '', items: [] },
   downloading: new Map(),
+  picking: new Set(),
   dlQuery: '',
   filter: 'all',
   sort: 'score',
@@ -1063,6 +1064,22 @@ async function startDownload(item) {
     toast(t('toast.downloadDesktop'), 'warn');
     return;
   }
+  if (state.downloading.has(item.repo) || state.picking.has(item.repo)) return;
+
+  let targetDir = null;
+  if (item.kind === 'fork') {
+    state.picking.add(item.repo);
+    try {
+      const picked = await window.portwatch.pickDownloadDir();
+      if (!picked || !picked.ok || !picked.dir) return;
+      targetDir = picked.dir;
+    } catch {
+      toast(t('toast.pickFolderError'), 'bad');
+      return;
+    } finally {
+      state.picking.delete(item.repo);
+    }
+  }
   if (state.downloading.has(item.repo)) return;
 
   state.downloading.set(item.repo, { repo: item.repo, phase: 'download', percent: 0 });
@@ -1074,6 +1091,7 @@ async function startDownload(item) {
       repo: item.repo,
       branch: item.branch,
       name: item.folder || safeFolder(item.label),
+      dir: targetDir || undefined,
     });
     if (!result || !result.ok) {
       throw new Error((result && result.detail) || t('dl.toastError', { name: item.label }));
