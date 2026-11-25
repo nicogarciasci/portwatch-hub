@@ -1,0 +1,768 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PortWatch Hub</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="portwatch.css">
+</head>
+<body class="is-loading" data-theme="vice">
+
+  <svg class="sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.4v13.2L19.2 12 8 5.4Z"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="5" width="3.6" height="14" rx="1.2"/><rect x="13.4" y="5" width="3.6" height="14" rx="1.2"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 7h8.5M17.5 7H20M4 17h2.5M11.5 17H20"/><circle cx="15" cy="7" r="2.1"/><circle cx="9" cy="17" r="2.1"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6.5 6.5 11 11M17.5 6.5l-11 11"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M3.5 7.2a1.7 1.7 0 0 1 1.7-1.7h4l2 2.2h7.6a1.7 1.7 0 0 1 1.7 1.7v8.4a1.7 1.7 0 0 1-1.7 1.7H5.2a1.7 1.7 0 0 1-1.7-1.7Z"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M6 3.5h7.4L18 8.1v12.4H6z"/><path d="M13.2 3.7V8.3H17.8M8.8 12h6M8.8 15.4h6"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 5H19v5.5M19 5l-8 8"/><path d="M18 13.4V18a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 18V7.5A1.5 1.5 0 0 1 6 6h4.6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.4 4.3L19 6.8"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11.5a8 8 0 1 0-2.4 5.7"/><path d="M20 5.5v6h-6"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5v10"/><path d="m7.5 10 4.5 4.5 4.5-4.5"/><path d="M5.5 19.5h13"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m7 14.5 5-5 5 5"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 7.5v6.2M12 17.2v.1"/><path d="M10.3 4.9 3.6 17a1.9 1.9 0 0 0 1.7 2.8h13.4A1.9 1.9 0 0 0 20.4 17L13.7 4.9a1.9 1.9 0 0 0-3.4 0Z"/></symbol>
+    <symbol id="i-trophy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h10v4.2a5 5 0 0 1-10 0Z"/><path d="M7 5.5H4.6a2.4 2.4 0 0 0 2.4 4M17 5.5h2.4a2.4 2.4 0 0 1-2.4 4M12 13.2V17M8.5 20h7M10 17h4"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24" fill="currentColor"><path d="m12 3.6 2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.2-4.1 5.8-.8Z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10.8" cy="10.8" r="6.2"/><path d="m15.4 15.4 4.1 4.1"/></symbol>
+    <symbol id="i-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.8 12h4.1l2-5.4 3.6 11 2.3-5.6h6.4"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8.4 7.5-4.8 4.5 4.8 4.5M15.6 7.5l4.8 4.5-4.8 4.5M13.3 4.8l-2.6 14.4"/></symbol>
+  </svg>
+
+  <!-- ======================= CENA ======================= -->
+  <div class="scene" id="scene" aria-hidden="true">
+    <div class="vice-scene">
+      <div class="sky"></div>
+      <div class="stars" id="stars"></div>
+      <div class="cloud c1"></div>
+      <div class="cloud c2"></div>
+      <div class="cloud c3"></div>
+      <div class="horizon-glow"></div>
+      <div class="skyline-layer skyline-far" aria-hidden="true"><div class="skyline-track" id="skylineFar"></div></div>
+      <div class="skyline-layer skyline-near" aria-hidden="true"><div class="skyline-track" id="skylineNear"></div></div>
+      <div class="sun-wrap">
+        <div class="sun-halo"></div>
+        <div class="sun" id="sun"></div>
+      </div>
+      <div class="ocean">
+        <div class="ocean-skyline ocean-skyline-far" aria-hidden="true"><div class="ocean-skyline-flip"><div class="skyline-track" id="skylineReflectFar"></div></div></div>
+        <div class="ocean-skyline ocean-skyline-near" aria-hidden="true"><div class="ocean-skyline-flip"><div class="skyline-track" id="skylineReflectNear"></div></div></div>
+        <div class="sun-lane"></div>
+        <div class="reflection"></div>
+        <div class="shimmer"></div>
+        <div class="ocean-ripples"></div>
+      </div>
+      <img class="palm-art palm-art-l" src="assets/palm.png" alt="">
+      <img class="palm-art palm-art-r" src="assets/palm.png" alt="">
+      <div class="scrim"></div>
+    </div>
+
+    <div class="ls-scene">
+      <div class="ls-sky"></div>
+      <div class="ls-sun"><span></span></div>
+      <div class="ls-cloud ls-cloud-a"></div>
+      <div class="ls-cloud ls-cloud-b"></div>
+      <div class="ls-cloud ls-cloud-c"></div>
+
+      <svg class="ls-hills" viewBox="0 0 1600 360" preserveAspectRatio="none" aria-hidden="true">
+        <path class="ls-hill-far" d="M0 246 C 130 214 272 234 404 208 C 548 180 674 210 806 192 C 950 172 1076 200 1206 182 C 1340 164 1478 192 1600 176 L1600 360 L0 360Z"/>
+        <path class="ls-hill-mid" d="M0 288 C 150 258 298 276 438 250 C 588 222 720 262 878 242 C 1028 224 1168 258 1298 240 C 1418 224 1518 246 1600 238 L1600 360 L0 360Z"/>
+        <path class="ls-hill-near" d="M0 332 C 170 308 330 322 500 302 C 660 284 800 312 960 298 C 1120 284 1280 308 1440 294 C 1500 288 1560 294 1600 292 L1600 360 L0 360Z"/>
+      </svg>
+
+      <svg class="ls-city" viewBox="0 0 1600 420" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+        <defs>
+          <pattern id="lsWindows" width="9" height="13" patternUnits="userSpaceOnUse">
+            <rect x="2" y="3" width="3" height="4" fill="#ffd79a"/>
+          </pattern>
+        </defs>
+
+        <g class="ls-far">
+          <rect x="860" y="300" width="54" height="120"/>
+          <rect x="922" y="250" width="36" height="170"/>
+          <rect x="968" y="205" width="48" height="215"/>
+          <rect x="1022" y="148" width="58" height="272"/>
+          <rect x="1088" y="92" width="66" height="328"/>
+          <rect x="1160" y="220" width="34" height="200"/>
+          <rect x="1202" y="118" width="58" height="302"/>
+          <rect x="1266" y="190" width="42" height="230"/>
+          <rect x="1314" y="156" width="52" height="264"/>
+          <rect x="1372" y="226" width="38" height="194"/>
+          <rect x="1416" y="270" width="62" height="150"/>
+          <rect x="1484" y="306" width="46" height="114"/>
+          <rect x="1536" y="334" width="64" height="86"/>
+        </g>
+
+        <g class="ls-roofs">
+          <rect x="1097" y="76" width="48" height="16"/>
+          <rect x="1210" y="100" width="42" height="18"/>
+          <rect x="1032" y="136" width="38" height="12"/>
+          <rect x="1324" y="146" width="32" height="10"/>
+          <rect x="1380" y="216" width="22" height="10"/>
+          <path d="M1121 76V38M1329 146V118M1048 136V114" class="ls-antenna"/>
+          <circle cx="1121" cy="36" r="3" class="ls-beacon"/>
+          <circle cx="1329" cy="116" r="2.4" class="ls-beacon"/>
+        </g>
+
+        <g class="ls-windows">
+          <rect x="1088" y="92" width="66" height="328"/>
+          <rect x="1202" y="118" width="58" height="302"/>
+          <rect x="968" y="205" width="48" height="215"/>
+          <rect x="1314" y="156" width="52" height="264"/>
+          <rect x="1022" y="148" width="58" height="272"/>
+        </g>
+
+        <g class="ls-rims">
+          <rect x="1088" y="92" width="2" height="328"/>
+          <rect x="1202" y="118" width="2" height="302"/>
+          <rect x="1314" y="156" width="2" height="264"/>
+        </g>
+
+        <g class="ls-near">
+          <rect x="318" y="352" width="44" height="68"/>
+          <rect x="370" y="368" width="38" height="52"/>
+          <rect x="416" y="342" width="30" height="78"/>
+          <rect x="430" y="372" width="46" height="48"/>
+          <rect x="482" y="356" width="38" height="64"/>
+          <rect x="526" y="378" width="52" height="42"/>
+          <rect x="584" y="344" width="34" height="76"/>
+          <rect x="624" y="366" width="58" height="54"/>
+          <rect x="688" y="338" width="40" height="82"/>
+          <rect x="734" y="354" width="46" height="66"/>
+          <rect x="786" y="320" width="36" height="100"/>
+          <rect x="828" y="350" width="26" height="70"/>
+          <rect x="866" y="376" width="42" height="44"/>
+          <rect x="914" y="362" width="34" height="58"/>
+          <rect x="954" y="384" width="58" height="36"/>
+          <rect x="1420" y="360" width="54" height="60"/>
+          <rect x="1480" y="374" width="44" height="46"/>
+          <rect x="1530" y="350" width="30" height="70"/>
+        </g>
+
+        <g class="ls-near-detail">
+          <path d="M790 420V210M760 222H860M790 222 860 218M828 220v20" class="ls-crane"/>
+          <path d="M438 352h24M494 350h16M596 336h12M700 330h18M798 312h14" class="ls-roof-line"/>
+          <circle cx="596" cy="334" r="2" class="ls-beacon"/>
+        </g>
+
+        <g class="ls-pier">
+          <rect x="76" y="398" width="402" height="11" class="ls-deck"/>
+          <path d="M76 404h402" class="ls-deck-line"/>
+          <g class="ls-ferris">
+            <circle cx="230" cy="300" r="86" class="ls-wheel"/>
+            <circle cx="230" cy="300" r="76" class="ls-wheel-inner"/>
+            <path d="M144 300h172M156.7 260h146.6M170 230.7h120M190 220v160M270 220v160M299.3 260h-146.6M303.3 340h-146.6" class="ls-spokes"/>
+            <path d="M230 300 186 420M230 300l44 120M197 368h66" class="ls-legs"/>
+            <circle cx="230" cy="300" r="7" class="ls-hub"/>
+            <g class="ls-gondolas">
+              <circle cx="316" cy="300" r="4"/>
+              <circle cx="304.5" cy="343" r="4"/>
+              <circle cx="274.5" cy="374.5" r="4"/>
+              <circle cx="230" cy="386" r="4"/>
+              <circle cx="185.5" cy="374.5" r="4"/>
+              <circle cx="155.5" cy="343" r="4"/>
+              <circle cx="144" cy="300" r="4"/>
+              <circle cx="155.5" cy="257" r="4"/>
+              <circle cx="185.5" cy="225.5" r="4"/>
+              <circle cx="230" cy="214" r="4"/>
+              <circle cx="274.5" cy="225.5" r="4"/>
+              <circle cx="304.5" cy="257" r="4"/>
+            </g>
+          </g>
+          <rect x="336" y="360" width="34" height="42" class="ls-pier-hut"/>
+          <rect x="342" y="368" width="5" height="6" class="ls-pier-window"/>
+          <rect x="353" y="368" width="5" height="6" class="ls-pier-window"/>
+          <rect x="80" y="380" width="26" height="20" class="ls-pier-hut"/>
+          <rect x="120" y="388" width="4" height="12" class="ls-pier-post"/>
+          <rect x="166" y="388" width="4" height="12" class="ls-pier-post"/>
+          <rect x="398" y="388" width="4" height="12" class="ls-pier-post"/>
+          <rect x="448" y="388" width="4" height="12" class="ls-pier-post"/>
+          <circle cx="108" cy="386" r="1.6" class="ls-pier-light"/>
+          <circle cx="146" cy="394" r="1.6" class="ls-pier-light"/>
+          <circle cx="260" cy="394" r="1.6" class="ls-pier-light"/>
+          <circle cx="330" cy="394" r="1.6" class="ls-pier-light"/>
+        </g>
+      </svg>
+
+      <div class="ls-water">
+        <div class="ls-lane"></div>
+        <div class="ls-glitter"></div>
+        <div class="ls-ripples"></div>
+      </div>
+
+      <div class="ls-haze"></div>
+      <img class="ls-palm ls-palm-l" src="assets/palm.png" alt="">
+      <img class="ls-palm ls-palm-r" src="assets/palm.png" alt="">
+      <div class="ls-scrim"></div>
+    </div>
+
+    <div class="grain"></div>
+    <div class="vignette"></div>
+  </div>
+
+  <!-- ======================= BARRA ======================= -->
+  <header class="titlebar" id="titlebar">
+    <div class="tb-left">
+      <div class="traffic">
+        <button class="dot dot-close" id="winClose" title="Fechar" data-i18n-title="win.close"></button>
+        <button class="dot dot-min" id="winMin" title="Minimizar" data-i18n-title="win.minimize"></button>
+        <button class="dot dot-max" id="winMax" title="Maximizar" data-i18n-title="win.maximize"></button>
+      </div>
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none">
+            <defs>
+              <linearGradient id="pwBrandArc" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#7a5cff" />
+                <stop offset=".55" stop-color="#ff2e7e" />
+                <stop offset="1" stop-color="#ff8a3d" />
+              </linearGradient>
+            </defs>
+            <circle cx="16" cy="16" r="12" stroke="rgba(255,255,255,0.34)" stroke-width="4.4" />
+            <circle cx="16" cy="16" r="12" stroke="url(#pwBrandArc)" stroke-width="4.4" stroke-linecap="round" stroke-dasharray="52 76" transform="rotate(-90 16 16)" />
+          </svg>
+        </span>
+        <span class="brand-text"><b>PortWatch</b><em>hub</em></span>
+      </div>
+    </div>
+    <div class="tb-right">
+      <span class="clock" id="clock">--:--</span>
+      <button class="profile" id="profileBtn" title="Sobre o PortWatch Hub" data-i18n-title="profile.title">
+        <span class="avatar">PW</span>
+        <span class="profile-col"><b>PortWatch</b><small>GTA VI · PC</small></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ======================= PALCO ======================= -->
+  <main class="stage">
+    <section class="hero" aria-label="Início" data-i18n-aria="hero.aria">
+      <p class="eyebrow"><span class="eyebrow-dot"></span><span data-i18n="hero.live">LIVE TRACKER</span><span class="eyebrow-sep">·</span><span>GTA VI</span></p>
+
+      <h1 class="logo pw-logo" aria-label="PortWatch VI">
+        <span class="pw-word">PORTWATCH</span>
+        <span class="pw-vi">VI</span>
+      </h1>
+
+      <p class="tagline" data-i18n="hero.tagline">Acompanhe em tempo real cada esforço para rodar GTA VI no PC. Baixe projetos e forks direto do launcher.</p>
+
+      <div class="play-row">
+        <button class="btn-play" id="raceBtn" title="Abrir a corrida (Enter)" data-i18n-title="hero.raceTitle">
+          <span class="play-badge"><svg class="ic"><use href="#i-trophy"></use></svg></span>
+          <span class="play-label" data-i18n="hero.race">VER CORRIDA</span>
+        </button>
+        <button class="btn-round" id="siteBtn" title="Abrir o site do PortWatch" aria-label="Abrir o site do PortWatch" data-i18n-title="hero.site" data-i18n-aria="hero.site">
+          <svg class="ic"><use href="#i-external"></use></svg>
+        </button>
+        <button class="btn-round" id="downloadsBtn" title="Abrir downloads" aria-label="Abrir downloads" data-i18n-title="hero.downloadsTitle" data-i18n-aria="hero.downloadsTitle">
+          <svg class="ic"><use href="#i-download"></use></svg>
+        </button>
+      </div>
+
+      <div class="live-strip" id="heroMeta" aria-live="polite">
+        <span class="status-dot" id="heroDot"></span>
+        <span id="heroMetaText" data-i18n="hero.checking">Sincronizando tracker…</span>
+        <span class="live-pill" id="heroPill" data-i18n="home.live">AO VIVO</span>
+      </div>
+    </section>
+
+    <aside class="rail" aria-label="Tracker">
+      <article class="glass live-card" id="homeCard">
+        <div class="status-head">
+          <span class="label" data-i18n="home.tracker">Tracker ao vivo</span>
+          <button class="mini-btn mini-ghost" id="homeRefresh" type="button" title="Atualizar" aria-label="Atualizar" data-i18n-title="home.refresh" data-i18n-aria="home.refresh">
+            <svg class="ic"><use href="#i-refresh"></use></svg>
+          </button>
+        </div>
+        <div class="live-leader">
+          <span class="live-rank">01</span>
+          <div class="live-copy">
+            <b id="homeLeader">—</b>
+            <small id="homeLeaderStage" data-i18n="home.loading">Lendo tracker.json…</small>
+          </div>
+          <span class="live-score" id="homeScore">—</span>
+        </div>
+        <div class="live-bar"><i id="homeBar"></i></div>
+        <ul class="status-rows">
+          <li><span data-i18n="home.top3">Top 3</span><b id="homeTop3">—</b></li>
+          <li><span data-i18n="home.efforts">Esforços</span><b id="homeEfforts">—</b></li>
+          <li><span data-i18n="home.updated">Atualizado</span><b id="homeUpdated">—</b></li>
+        </ul>
+        <div class="live-actions">
+          <button class="mini-btn" id="homeRace" type="button"><svg class="ic"><use href="#i-trophy"></use></svg><span data-i18n="hero.race">VER CORRIDA</span></button>
+          <button class="mini-btn" id="homeSite" type="button"><svg class="ic"><use href="#i-external"></use></svg><span data-i18n="race.site">Site</span></button>
+        </div>
+      </article>
+
+      <article class="glass dl-card" id="homeDownloadsCard">
+        <div class="status-head">
+          <span class="label" data-i18n="dl.kicker">DOWNLOADS</span>
+          <span class="pill" id="dlCountPill">—</span>
+        </div>
+        <div class="dl-card-stats">
+          <div><b id="homeProjects">—</b><span data-i18n="dl.projects">projetos</span></div>
+          <div><b id="homeForks">—</b><span data-i18n="dl.forksCount">forks</span></div>
+        </div>
+        <p class="dl-card-copy" data-i18n="dl.sub">Baixe o código público dos projetos da corrida e todos os forks do PortWatch. O ZIP é extraído na pasta escolhida.</p>
+        <button class="mini-btn" id="homeDownloads" type="button"><svg class="ic"><use href="#i-download"></use></svg><span data-i18n="hero.downloads">Baixar projetos</span></button>
+      </article>
+    </aside>
+  </main>
+
+  <!-- ======================= DOCK ======================= -->
+  <footer class="dock glass">
+    <nav class="tabs" aria-label="Navegação" data-i18n-aria="nav.aria">
+      <button class="tab is-active" data-nav="home" data-i18n="nav.home">Início</button>
+      <button class="tab" data-nav="race" data-i18n="nav.race">Corrida</button>
+      <button class="tab" data-nav="downloads" data-i18n="nav.downloads">Downloads</button>
+      <button class="tab" data-nav="hardware" data-i18n="nav.hardware">Hardware</button>
+      <button class="tab" data-nav="settings" data-i18n="nav.settings">Ajustes</button>
+      <button class="tab" data-nav="about" data-i18n="nav.about">Sobre</button>
+    </nav>
+    <div class="dock-right">
+      <div class="radio-wrap" id="radioWrap">
+        <div class="radio" id="radioBtn">
+          <button class="radio-main" id="radioPicker" aria-haspopup="listbox" aria-expanded="false" aria-controls="radioMenu" title="Escolher rádio" data-i18n-title="radio.pick" data-i18n-aria="radio.pick">
+            <span class="eq" id="eq"><i></i><i></i><i></i><i></i></span>
+            <span class="radio-txt"><b id="radioName">NEON FM</b><small id="radioMeta">98.7 · Midnight Coast</small></span>
+            <svg class="ic radio-caret"><use href="#i-chevron"></use></svg>
+          </button>
+          <button class="radio-play" id="radioPlay" aria-pressed="false" title="Reproduzir rádio" data-i18n-title="radio.play" data-i18n-aria="radio.play">
+            <svg class="ic"><use href="#i-play"></use></svg>
+          </button>
+        </div>
+        <div class="radio-menu" id="radioMenu" role="listbox" aria-hidden="true" aria-label="Rádios" data-i18n-aria="radio.list">
+          <div class="radio-menu-head">
+            <span data-i18n="radio.menuKicker">ESTAÇÕES</span>
+            <i aria-hidden="true"></i>
+          </div>
+          <div class="radio-stations" id="radioStations"></div>
+          <p class="radio-menu-foot" data-i18n="radio.foot">Sintetizador local · todas no mesmo estilo</p>
+        </div>
+      </div>
+      <span class="build-tag" id="versionTag">v2.0.0</span>
+    </div>
+  </footer>
+
+  <!-- ======================= FOLHA ======================= -->
+  <div class="overlay" id="overlay" aria-hidden="true">
+    <section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+      <header class="sheet-head">
+        <div>
+          <p class="kicker" id="sheetKicker">PORTWATCH VI</p>
+          <h2 id="sheetTitle">Corrida</h2>
+        </div>
+        <button class="icon-btn" id="sheetClose" aria-label="Fechar" data-i18n-aria="sheet.close">
+          <svg class="ic"><use href="#i-close"></use></svg>
+        </button>
+      </header>
+
+      <div class="sheet-body" id="sheetBody">
+
+        <!-- CORRIDA -->
+        <div class="view" data-view="race">
+          <div class="view-head">
+            <div class="view-head-copy">
+              <p class="view-sub" data-i18n="race.sub">Os esforços com código público, ranqueados pelo quão perto estão de rodar GTA VI no PC. Dados do tracker oficial, atualizados a cada poucos minutos.</p>
+            </div>
+            <div class="view-head-actions">
+              <button class="mini-btn" id="raceRefreshBtn" type="button"><svg class="ic"><use href="#i-refresh"></use></svg><span data-i18n="race.refresh">Atualizar</span></button>
+              <button class="mini-btn" id="raceSiteBtn" type="button"><svg class="ic"><use href="#i-external"></use></svg><span data-i18n="race.site">Site</span></button>
+            </div>
+          </div>
+
+          <div class="race-stats">
+            <div class="race-stat"><span data-i18n="race.overall">Progresso geral</span><b id="raceOverall">—</b></div>
+            <div class="race-stat"><span data-i18n="race.top3">Média do top 3</span><b id="raceTop3">—</b></div>
+            <div class="race-stat"><span data-i18n="race.furthest">Fase mais avançada</span><b id="raceFurthest">—</b></div>
+            <div class="race-stat"><span data-i18n="race.tracked">Esforços</span><b id="raceTracked">—</b></div>
+            <div class="race-stat"><span data-i18n="race.updated">Atualizado</span><b id="raceUpdated">—</b></div>
+          </div>
+
+          <div class="race-toolbar">
+            <div class="race-filters" id="raceFilters" role="group" aria-label="Filtros" data-i18n-aria="race.title">
+              <button class="chip is-active" type="button" data-filter="all" data-i18n="race.all">Todos</button>
+              <button class="chip" type="button" data-filter="gta" data-i18n="race.gta">GTA VI</button>
+              <button class="chip" type="button" data-filter="generic" data-i18n="race.generic">Camadas gerais</button>
+              <button class="chip" type="button" data-filter="private" data-i18n="race.private">Privados</button>
+              <button class="chip" type="button" data-filter="watch" data-i18n="race.watch">Watchlist</button>
+            </div>
+            <label class="race-sort">
+              <span data-i18n="race.sort">Ordenar</span>
+              <div class="select-wrap">
+                <select id="raceSort" aria-label="Ordenar" data-i18n-aria="race.sort">
+                  <option value="score" data-i18n="race.sortScore">Progresso</option>
+                  <option value="stars" data-i18n="race.sortStars">Estrelas</option>
+                  <option value="active" data-i18n="race.sortActive">Atividade</option>
+                </select>
+              </div>
+            </label>
+          </div>
+
+          <div class="race-list" id="raceList">
+            <p class="empty-note" data-i18n="race.loading">Carregando corrida…</p>
+          </div>
+
+          <p class="note" id="raceNote"></p>
+        </div>
+
+        <!-- DOWNLOADS -->
+        <div class="view" data-view="downloads">
+          <div class="view-head">
+            <div class="view-head-copy">
+              <p class="view-sub" data-i18n="dl.sub">Baixe o código público dos projetos da corrida e todos os forks do PortWatch. O ZIP é extraído na pasta escolhida.</p>
+            </div>
+            <div class="view-head-actions">
+              <button class="mini-btn" id="dlRefreshBtn" type="button"><svg class="ic"><use href="#i-refresh"></use></svg><span data-i18n="dl.refresh">Atualizar</span></button>
+            </div>
+          </div>
+
+          <div class="dl-path">
+            <div class="dl-path-main">
+              <span data-i18n="dl.path">Pasta de downloads</span>
+              <code id="dlDir">—</code>
+            </div>
+            <div class="dl-path-actions">
+              <button class="mini-btn" id="dlChoose" type="button"><svg class="ic"><use href="#i-folder"></use></svg><span data-i18n="dl.choose">Escolher pasta</span></button>
+              <button class="mini-btn" id="dlOpen" type="button"><svg class="ic"><use href="#i-external"></use></svg><span data-i18n="dl.open">Abrir pasta</span></button>
+            </div>
+          </div>
+
+          <div class="dl-toolbar">
+            <div class="dl-search">
+              <svg class="ic"><use href="#i-search"></use></svg>
+              <input id="dlSearch" type="search" autocomplete="off" spellcheck="false" placeholder="Buscar por nome ou repositório…" data-i18n-placeholder="dl.searchPlaceholder">
+            </div>
+            <span class="dl-total" id="dlTotal">—</span>
+          </div>
+
+          <section class="dl-section">
+            <div class="group-head">
+              <h3 data-i18n="dl.sourceProjects">Projetos da corrida</h3>
+              <span class="dl-count" id="dlProjectsCount">—</span>
+            </div>
+            <div class="dl-list" id="dlProjects"><p class="empty-note" data-i18n="race.loading">Carregando corrida…</p></div>
+          </section>
+
+          <section class="dl-section">
+            <div class="group-head">
+              <h3 data-i18n="dl.sourceForks">Forks do PortWatch</h3>
+              <span class="dl-count" id="dlForksCount">—</span>
+            </div>
+            <div class="dl-list" id="dlForks"><p class="empty-note" data-i18n="race.loading">Carregando corrida…</p></div>
+          </section>
+
+          <p class="note" data-i18n="dl.hint">O download usa o GitHub. Projetos grandes podem demorar; o progresso aparece na linha.</p>
+        </div>
+
+        <!-- HARDWARE -->
+        <div class="view" data-view="hardware">
+          <section class="group">
+            <h3 data-i18n="hw.targetTitle">Alvo de desempenho</h3>
+            <div class="hw-targets" id="hwTargets" role="group" aria-label="Alvo de desempenho" data-i18n-aria="hw.targetTitle">
+              <button type="button" class="hw-target is-active" data-target="low">
+                <b data-i18n="hw.targetLow">1080p Baixo</b>
+                <small data-i18n="hw.targetLowNote">30–60 FPS · paridade Series S</small>
+              </button>
+              <button type="button" class="hw-target" data-target="high">
+                <b data-i18n="hw.targetHigh">1080p Alto</b>
+                <small data-i18n="hw.targetHighNote">60 FPS estáveis · paridade Series X</small>
+              </button>
+              <button type="button" class="hw-target" data-target="1440">
+                <b data-i18n="hw.target1440">1440p Alto</b>
+                <small data-i18n="hw.target1440Note">60 FPS</small>
+              </button>
+              <button type="button" class="hw-target" data-target="4k">
+                <b data-i18n="hw.target4k">4K Ultra</b>
+                <small data-i18n="hw.target4kNote">60+ FPS</small>
+              </button>
+            </div>
+            <p class="note" data-i18n="hw.targetHint">Compare seu PC com o alvo escolhido.</p>
+          </section>
+
+          <section class="group">
+            <div class="group-head">
+              <h3 data-i18n="hw.pcTitle">Seu PC</h3>
+              <span class="hw-source" id="hwSource">—</span>
+            </div>
+            <div class="hw-pc-card">
+              <div class="hw-part"><span>GPU</span><b id="hwGpuName">—</b><small id="hwGpuMeta">—</small></div>
+              <div class="hw-part"><span>CPU</span><b id="hwCpuName">—</b><small id="hwCpuMeta">—</small></div>
+              <div class="hw-part"><span>RAM</span><b id="hwRamName">—</b><small id="hwRamMeta">—</small></div>
+              <div class="hw-part"><span data-i18n="hw.barStorage">Armazenamento</span><b id="hwStorageName">—</b><small id="hwStorageMeta">—</small></div>
+            </div>
+            <div class="hw-pc-actions">
+              <button class="mini-btn" id="hwRefreshBtn" type="button"><svg class="ic"><use href="#i-refresh"></use></svg><span data-i18n="hw.refresh">Atualizar detecção</span></button>
+              <span class="hw-error" id="hwError" hidden></span>
+            </div>
+          </section>
+
+          <section class="group">
+            <h3 data-i18n="hw.resultTitle">Resultado</h3>
+            <div class="hw-verdict" id="hwVerdict">
+              <span class="hw-verdict-icon"><svg class="ic"><use href="#i-sliders" id="hwVerdictUse"></use></svg></span>
+              <div class="hw-verdict-copy">
+                <b id="hwVerdictTitle" data-i18n="hw.loading">Lendo hardware…</b>
+                <small id="hwVerdictText">—</small>
+              </div>
+              <span class="hw-verdict-pct" id="hwVerdictPct">—</span>
+            </div>
+            <div class="hw-bars">
+              <div class="hw-bar" data-hw="gpu">
+                <div class="hw-bar-head"><b data-i18n="hw.barGpu">GPU</b><span class="hw-score" id="hwGpuScore">—</span></div>
+                <div class="hw-track"><i id="hwGpuFill"></i><span class="hw-need" id="hwGpuNeed"></span></div>
+                <small class="hw-need-text" id="hwGpuNeedText">—</small>
+              </div>
+              <div class="hw-bar" data-hw="cpu">
+                <div class="hw-bar-head"><b data-i18n="hw.barCpu">CPU</b><span class="hw-score" id="hwCpuScore">—</span></div>
+                <div class="hw-track"><i id="hwCpuFill"></i><span class="hw-need" id="hwCpuNeed"></span></div>
+                <small class="hw-need-text" id="hwCpuNeedText">—</small>
+              </div>
+              <div class="hw-bar" data-hw="ram">
+                <div class="hw-bar-head"><b data-i18n="hw.barRam">RAM</b><span class="hw-score" id="hwRamScore">—</span></div>
+                <div class="hw-track"><i id="hwRamFill"></i><span class="hw-need" id="hwRamNeed"></span></div>
+                <small class="hw-need-text" id="hwRamNeedText">—</small>
+              </div>
+              <div class="hw-bar" data-hw="storage">
+                <div class="hw-bar-head"><b data-i18n="hw.barStorage">Armazenamento</b><span class="hw-score" id="hwStorageScore">—</span></div>
+                <div class="hw-track"><i id="hwStorageFill"></i><span class="hw-need" id="hwStorageNeed"></span></div>
+                <small class="hw-need-text" id="hwStorageNeedText">—</small>
+              </div>
+            </div>
+            <div class="hw-baseline"><span data-i18n="hw.baselineLabel">BASE</span><b data-i18n="hw.baseline">Xbox Series X · 8 núcleos Zen 2 · 12 TFLOPS · 16 GB</b></div>
+          </section>
+
+          <section class="group">
+            <h3 data-i18n="hw.manualTitle">Selecionar hardware</h3>
+            <div class="rows">
+              <label class="row">
+                <div class="row-main"><b data-i18n="hw.autoUse">Usar hardware detectado</b><small data-i18n="hw.autoHint">Desligue para escolher peças manualmente.</small></div>
+                <span class="switch"><input type="checkbox" id="hwAutoToggle" checked><i></i></span>
+              </label>
+              <div class="row">
+                <div class="row-main"><b data-i18n="hw.gpu">Placa de vídeo</b><small data-i18n="hw.manualHint">Simule outro PC sem alterar o hardware real.</small></div>
+                <div class="select-wrap"><select id="hwGpuSelect" class="hw-select" data-i18n-aria="hw.gpu"></select></div>
+              </div>
+              <div class="row">
+                <div class="row-main"><b data-i18n="hw.cpu">Processador</b></div>
+                <div class="select-wrap"><select id="hwCpuSelect" class="hw-select" data-i18n-aria="hw.cpu"></select></div>
+              </div>
+              <div class="row">
+                <div class="row-main"><b data-i18n="hw.ram">Memória RAM</b></div>
+                <div class="select-wrap"><select id="hwRamSelect" class="hw-select" data-i18n-aria="hw.ram"></select></div>
+              </div>
+              <div class="row">
+                <div class="row-main"><b data-i18n="hw.storage">Armazenamento</b></div>
+                <div class="select-wrap"><select id="hwStorageSelect" class="hw-select" data-i18n-aria="hw.storage"></select></div>
+              </div>
+            </div>
+          </section>
+
+          <p class="fine" data-i18n="hw.fine">Estimativas de hardware inspiradas em dados da comunidade; não medem o desempenho real de cada port.</p>
+        </div>
+
+        <!-- AJUSTES -->
+        <div class="view" data-view="settings">
+          <section class="group">
+            <h3 data-i18n="settings.appearance">Aparência</h3>
+            <div class="theme-picker" id="themePicker" role="group" aria-label="Visual do launcher" data-i18n-aria="settings.theme">
+              <button type="button" class="theme-card is-active" data-theme-choice="vice" aria-pressed="true">
+                <span class="theme-preview theme-preview-vice" aria-hidden="true"></span>
+                <span class="theme-copy">
+                  <b data-i18n="theme.vice">Vice City</b>
+                  <small data-i18n="theme.viceNote">Anoitecer neon em Leonida</small>
+                </span>
+                <span class="theme-check" aria-hidden="true"><svg class="ic"><use href="#i-check"></use></svg></span>
+              </button>
+              <button type="button" class="theme-card" data-theme-choice="losSantos" aria-pressed="false">
+                <span class="theme-preview theme-preview-ls" aria-hidden="true"></span>
+                <span class="theme-copy">
+                  <b data-i18n="theme.losSantos">Los Santos</b>
+                  <small data-i18n="theme.losSantosNote">GTA V · sol de San Andreas</small>
+                </span>
+                <span class="theme-check" aria-hidden="true"><svg class="ic"><use href="#i-check"></use></svg></span>
+              </button>
+            </div>
+            <p class="note" data-i18n="settings.themeHint">A troca é imediata e muda o cenário e todo o visual dos menus.</p>
+          </section>
+
+          <section class="group">
+            <h3 data-i18n="settings.interface">Interface</h3>
+            <div class="rows">
+              <div class="row">
+                <div class="row-main"><b data-i18n="settings.language">Idioma</b><small data-i18n="settings.languageHint">Aplicado ao launcher e às mensagens</small></div>
+                <div class="select-wrap">
+                  <select data-bind="language" aria-label="Idioma" data-i18n-aria="settings.language">
+                    <option value="pt-BR">Português (Brasil)</option>
+                    <option value="en">English</option>
+                    <option value="es">Español</option>
+                  </select>
+                </div>
+              </div>
+              <label class="row">
+                <div class="row-main"><b data-i18n="settings.sounds">Sons da interface</b><small data-i18n="settings.soundsHint">Cliques e passagem do mouse</small></div>
+                <span class="switch"><input type="checkbox" data-bind="uiSounds"><i></i></span>
+              </label>
+              <label class="row">
+                <div class="row-main"><b data-i18n="settings.music">Música de fundo</b><small data-i18n="settings.musicHint">Rádios synthwave ao abrir o launcher</small></div>
+                <span class="switch"><input type="checkbox" data-bind="radioOn"><i></i></span>
+              </label>
+              <label class="row">
+                <div class="row-main"><b data-i18n="settings.reduceMotion">Reduzir movimento</b><small data-i18n="settings.reduceMotionHint">Desliga paralaxe e animações longas</small></div>
+                <span class="switch"><input type="checkbox" data-bind="reduceMotion"><i></i></span>
+              </label>
+              <label class="row">
+                <div class="row-main"><b data-i18n="settings.fullscreen">Abrir em tela cheia</b><small data-i18n="settings.fullscreenHint">Aplica ao iniciar o launcher</small></div>
+                <span class="switch"><input type="checkbox" data-bind="startFullscreen"><i></i></span>
+              </label>
+              <div class="row">
+                <div class="row-main"><b data-i18n="settings.volume">Volume da rádio</b><small data-i18n="settings.volumeHint">Volume das rádios · sintetizador local</small></div>
+                <input class="slider" type="range" min="0" max="100" step="1" data-bind="musicVolume" aria-label="Volume da rádio" data-i18n-aria="settings.volume">
+              </div>
+            </div>
+          </section>
+
+          <section class="group">
+            <h3 data-i18n="settings.tracker">Tracker</h3>
+            <div class="rows">
+              <div class="row">
+                <div class="row-main"><b data-i18n="settings.refreshEvery">Atualizar a cada</b><small data-i18n="settings.refreshHint">Minutos entre atualizações automáticas.</small></div>
+                <div class="select-wrap">
+                  <select data-bind="refreshMinutes" aria-label="Atualizar a cada" data-i18n-aria="settings.refreshEvery">
+                    <option value="1">1 min</option>
+                    <option value="5">5 min</option>
+                    <option value="10">10 min</option>
+                    <option value="15">15 min</option>
+                    <option value="30">30 min</option>
+                    <option value="60">60 min</option>
+                  </select>
+                </div>
+              </div>
+              <div class="row row-file">
+                <div class="row-main"><b data-i18n="settings.token">Token do GitHub (opcional)</b><small data-i18n="settings.tokenHint">Aumenta o limite da API ao listar forks e baixar projetos.</small></div>
+                <input class="text-input" type="password" data-bind="githubToken" placeholder="ghp_…" data-i18n-placeholder="settings.tokenPlaceholder" spellcheck="false" autocomplete="off">
+              </div>
+            </div>
+            <p class="note" data-i18n="settings.trackerHint">A corrida é atualizada automaticamente a partir do GitHub do PortWatch.</p>
+          </section>
+
+          <section class="group">
+            <h3 data-i18n="settings.downloads">Downloads</h3>
+            <div class="rows">
+              <div class="row row-file">
+                <div class="row-main"><b data-i18n="dl.path">Pasta de downloads</b><small class="mono" id="settingsDlDir">—</small></div>
+                <div class="row-actions">
+                  <button class="mini-btn" id="settingsChooseDir" type="button" data-i18n="settings.chooseFolder">Escolher</button>
+                  <button class="mini-btn" id="settingsOpenDir" type="button" data-i18n="settings.openFolder">Abrir</button>
+                </div>
+              </div>
+            </div>
+            <p class="note" data-i18n="settings.downloadsHint">Pasta onde os ZIPs são extraídos.</p>
+          </section>
+
+          <section class="group">
+            <h3 data-i18n="settings.shortcuts">Atalhos</h3>
+            <div class="rows">
+              <div class="row"><div class="row-main"><b data-i18n="settings.race">Corrida</b><small data-i18n="settings.raceHint">Abrir a corrida</small></div><kbd>Enter</kbd></div>
+              <div class="row"><div class="row-main"><b data-i18n="settings.refresh">Atualizar</b><small data-i18n="settings.refreshHint">Atualiza o tracker</small></div><kbd>R</kbd></div>
+              <div class="row"><div class="row-main"><b data-i18n="settings.closeMenus">Fechar menus</b><small data-i18n="settings.closeMenusHint">Também cancela a folha</small></div><kbd>Esc</kbd></div>
+              <div class="row"><div class="row-main"><b data-i18n="settings.fullscreenKey">Tela cheia</b><small data-i18n="settings.fullscreenKeyHint">Alterna a janela</small></div><kbd>F11</kbd></div>
+            </div>
+          </section>
+
+          <p class="note" data-i18n-html="settings.savedNote">Preferências salvas em <code>Launcher\data\config.json</code>.</p>
+        </div>
+
+        <!-- SOBRE -->
+        <div class="view" data-view="about">
+          <div class="about-hero">
+            <div class="about-mark pw-about-mark"><span>PW</span></div>
+            <div class="about-id">
+              <p class="kicker" data-i18n="about.kicker">PORTWATCH HUB</p>
+              <h3 id="aboutVersion">v2.0.0</h3>
+              <p data-i18n-html="about.description">Uma central de mesa para a corrida do <b>PortWatch VI</b>: leaderboard ao vivo, downloads de projetos e forks, e verificação de hardware.</p>
+            </div>
+          </div>
+
+          <div class="quick-actions">
+            <button class="mini-btn" id="aboutSiteBtn" type="button"><svg class="ic"><use href="#i-external"></use></svg><span data-i18n="about.site">Site da corrida</span></button>
+            <button class="mini-btn" id="aboutRepoBtn" type="button"><svg class="ic"><use href="#i-code"></use></svg><span data-i18n="about.tracker">GitHub do tracker</span></button>
+            <button class="mini-btn" id="aboutOpenDir" type="button"><svg class="ic"><use href="#i-folder"></use></svg><span data-i18n="about.downloads">Pasta de downloads</span></button>
+            <button class="mini-btn" id="aboutRefreshBtn" type="button"><svg class="ic"><use href="#i-refresh"></use></svg><span data-i18n="about.update">Atualizar tracker</span></button>
+          </div>
+
+          <div class="about-facts">
+            <div><span data-i18n="about.project">Projeto</span><b>PortWatch VI</b></div>
+            <div><span data-i18n="about.launcher">Launcher</span><b>PortWatch Hub</b></div>
+            <div><span data-i18n="about.author">Autor</span><b>Nicolas Garcia · Nico.SCI</b></div>
+            <div><span data-i18n="about.source">Fonte</span><b>4lwayz/portwatch-vi</b></div>
+            <div><span data-i18n="about.refresh">Atualização</span><b id="aboutRefresh">—</b></div>
+            <div><span data-i18n="about.efforts">Esforços</span><b id="aboutEfforts">—</b></div>
+            <div><span data-i18n="about.forks">Forks</span><b id="aboutForks">—</b></div>
+            <div><span data-i18n="about.language">Idioma</span><b id="aboutLang">Português (Brasil)</b></div>
+            <div><span data-i18n="about.downloads">Pasta de downloads</span><b id="aboutDownloads" class="mono">—</b></div>
+          </div>
+
+          <p class="fine" data-i18n="about.fine">Fan-made e não oficial. Sem vínculo com a Rockstar Games, a Take-Two ou a Microsoft. Nenhum arquivo, chave ou executável do jogo é hospedado ou linkado aqui.</p>
+        </div>
+
+      </div>
+
+      <footer class="sheet-foot" id="sheetFoot">
+        <button class="btn-ghost" id="sheetReset" data-i18n="sheet.reset">Restaurar padrões</button>
+        <div class="foot-actions">
+          <button class="btn-ghost" id="sheetCancel" data-i18n="sheet.cancel">Cancelar</button>
+          <button class="btn-primary" id="sheetSave" data-i18n="sheet.save">Salvar alterações</button>
+        </div>
+      </footer>
+    </section>
+  </div>
+
+  <!-- ======================= DIÁLOGO ======================= -->
+  <div class="overlay dialog-layer" id="dialog" aria-hidden="true">
+    <section class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="dlgTitle">
+      <div class="dialog-icon" id="dlgIcon"><svg class="ic"><use href="#i-alert"></use></svg></div>
+      <h3 id="dlgTitle" data-i18n="dlg.attention">Atenção</h3>
+      <p id="dlgMsg"></p>
+      <code class="dialog-detail" id="dlgDetail" hidden></code>
+      <div class="dialog-actions" id="dlgActions"></div>
+    </section>
+  </div>
+
+  <!-- ======================= IDIOMA (PRIMEIRA VEZ) ======================= -->
+  <div class="lang-layer" id="langLayer" aria-hidden="true">
+    <section class="lang-card" role="dialog" aria-modal="true" aria-labelledby="langTitle">
+      <p class="lang-kicker">PORTWATCH HUB</p>
+      <h2 id="langTitle">Escolha seu idioma</h2>
+      <p class="lang-sub">Choose your language · Elige tu idioma</p>
+      <div class="lang-options">
+        <button type="button" class="lang-option" data-lang="pt-BR">
+          <span class="lang-tag">PT</span>
+          <span class="lang-name">Português<small>Brasil</small></span>
+          <span class="lang-check"><svg class="ic"><use href="#i-check"></use></svg></span>
+        </button>
+        <button type="button" class="lang-option" data-lang="en">
+          <span class="lang-tag">EN</span>
+          <span class="lang-name">English<small>International</small></span>
+          <span class="lang-check"><svg class="ic"><use href="#i-check"></use></svg></span>
+        </button>
+        <button type="button" class="lang-option" data-lang="es">
+          <span class="lang-tag">ES</span>
+          <span class="lang-name">Español<small>Latinoamérica</small></span>
+          <span class="lang-check"><svg class="ic"><use href="#i-check"></use></svg></span>
+        </button>
+      </div>
+      <p class="lang-foot">Você pode mudar depois em Ajustes · You can change this later in Settings</p>
+    </section>
+  </div>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <script src="i18n.js"></script>
+  <script src="radio.js"></script>
+  <script src="hardware.js"></script>
+  <script src="scene.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

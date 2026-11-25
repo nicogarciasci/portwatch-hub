@@ -1,0 +1,14 @@
+node_modules/
+data/
+/Downloads/
+/shots/
+
+# artefatos de desenvolvimento
+/preview.png
+/crop-*.png
+/palm-photo-*.jpg
+/palm-test.png
+*.log
+
+# atalho local do Windows
+/PortWatch Hub.lnk
