@@ -24,7 +24,7 @@ Se o Windows SmartScreen avisar que o app não tem assinatura, clique em **Mais 
 - **Downloads integrados:** lista todos os projetos públicos do tracker e todos os forks do PortWatch, com busca, progresso e extração automática do ZIP. Ao baixar uma fork, o launcher pergunta em qual pasta você quer salvar.
 - **Jogar com DexNom:** prepara o runtime **DexNom** (fork do VIctory para AMD Radeon) e inicia o GTA VI com a sua cópia local do jogo, com botão **Jogar/Parar**, atalho **Executar** na tela inicial, pasta de instalação configurável, ray tracing opcional e log da preparação.
 - **Saves do jogo:** aba **Saves** ao lado de **Ajustes** para instalar um save em ZIP ou pasta, abrir a pasta do runtime, deletar com backup automático e restaurar qualquer um dos últimos 8 backups.
-- **Hardware:** detecta CPU, GPU, VRAM, RAM e armazenamento, permite simular outras peças e compara o PC com alvos de 1080p a 4K.
+- **Hardware:** detecta CPU, GPU, VRAM, RAM e armazenamento, permite simular outras peças e compara o PC com alvos de 1080p a 4K. Repertório com cerca de 75 GPUs e 60 CPUs em escala relativa.
 - **Temas:** **Vice City** (padrão) e **Los Santos**, com cenário, cores e rádio próprios.
 - **Trilíngue:** Português (Brasil), English e Español, com escolha na primeira abertura e troca imediata em Ajustes.
 - **Rádio local:** estações synthwave geradas por WebAudio no próprio launcher, sem internet.
@@ -126,10 +126,12 @@ A aba **Hardware** detecta o PC atual pelo Windows e transforma cada componente 
 
 | Alvo | GPU | CPU | RAM | Armazenamento |
 | --- | --- | --- | --- | --- |
-| 1080p Baixo · 30–60 FPS | 45 | 45 | 50 | 50 |
-| 1080p Alto · 60 FPS | 65 | 63 | 65 | 65 |
-| 1440p Alto · 60 FPS | 78 | 72 | 76 | 72 |
-| 4K Ultra · 60+ FPS | 90 | 82 | 85 | 82 |
+| 1080p Baixo · 30–60 FPS | 34 | 42 | 50 | 55 |
+| 1080p Alto · 60 FPS | 58 | 60 | 60 | 70 |
+| 1440p Alto · 60 FPS | 70 | 65 | 70 | 76 |
+| 4K Ultra · 60+ FPS | 82 | 75 | 80 | 82 |
+
+A escala é relativa e comprimida: **100** na GPU equivale à **RTX 5090** e **100** na CPU equivale ao **Ryzen 7 9800X3D**. A lista cobre cerca de 75 GPUs (NVIDIA, AMD, Intel Arc e integradas) e 60 CPUs (AMD e Intel), agrupadas por fabricante no select. As notas de RAM e armazenamento usam a mesma fórmula da detecção automática, e GPUs de notebook recebem um ajuste conservador.
 
 A detecção lê o nome da GPU, a VRAM, o modelo e os núcleos da CPU, a quantidade/tipo/velocidade da RAM e o tipo do disco de downloads. Use **Atualizar detecção** para reler o PC. Os selects de peças ficam sempre disponíveis: ao mudar qualquer componente, o modo manual liga sozinho; o interruptor **Usar hardware detectado** volta para a detecção real. As notas são estimativas inspiradas em dados da comunidade; não medem o desempenho real de cada port.
 

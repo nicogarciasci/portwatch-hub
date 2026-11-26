@@ -41,7 +41,7 @@ const VIEW_META = {
 const state = {
   config: { ...DEFAULTS },
   defaults: { ...DEFAULTS },
-  appVersion: '2.3.0',
+  appVersion: '2.4.0',
   site: SITE_URL,
   trackerRepo: TRACKER_GITHUB,
   tracker: null,
