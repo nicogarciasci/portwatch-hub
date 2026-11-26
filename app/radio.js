@@ -18,6 +18,8 @@ const audio = {
   retuneTimer: null,
   step: 0,
   next: 0,
+  trackIndex: 0,
+  trackPrimed: false,
 };
 
 const RADIO_STATIONS = [
@@ -52,6 +54,32 @@ const RADIO_STATIONS = [
       { bass: 98.0, pad: [196.0, 246.94, 293.66, 369.99], arp: [392.0, 493.88, 587.33, 739.99] },
     ],
     progression: [0, 1, 2, 3, 0, 1, 2, 3],
+    tracks: [
+      {
+        title: 'Neon Run',
+        bpm: 100,
+        progression: [0, 2, 1, 3, 0, 2, 3, 1],
+        arpEvery: 2,
+        padType: 'sawtooth',
+        padGain: 0.018,
+        arpGain: 0.025,
+        kickPattern: [0, 4, 8, 12],
+        bassPattern: [0, 4, 8, 12],
+      },
+      {
+        title: 'Afterglow',
+        bpm: 84,
+        progression: [0, 1, 3, 2, 0, 3, 1, 2],
+        arpEvery: 4,
+        padType: 'sine',
+        bassType: 'sine',
+        arpType: 'sine',
+        kickPattern: [0, 8],
+        bassPattern: [0, 8],
+        clapGain: 0.5,
+        hatGain: 0.6,
+      },
+    ],
   },
   {
     id: 'ocean',
@@ -84,6 +112,31 @@ const RADIO_STATIONS = [
       { bass: 65.41, pad: [130.81, 164.81, 196.0, 246.94], arp: [261.63, 329.63, 392.0, 493.88] },
     ],
     progression: [0, 1, 2, 3, 0, 2, 1, 3],
+    tracks: [
+      {
+        title: 'Pacific Drift',
+        bpm: 78,
+        progression: [0, 2, 3, 1, 0, 2, 1, 3],
+        arpEvery: 4,
+        padType: 'sine',
+        arpType: 'triangle',
+        kickPattern: [0, 8],
+        bassPattern: [0, 8],
+        hatGain: 0.5,
+      },
+      {
+        title: 'Golden Hour',
+        bpm: 90,
+        progression: [0, 1, 3, 2, 0, 1, 2, 3],
+        arpEvery: 2,
+        padType: 'triangle',
+        arpType: 'sine',
+        kickPattern: [0, 4, 8, 12],
+        bassPattern: [0, 6, 8, 14],
+        clapGain: 0.8,
+        hatGain: 0.85,
+      },
+    ],
   },
   {
     id: 'night',
@@ -116,6 +169,33 @@ const RADIO_STATIONS = [
       { bass: 116.54, pad: [233.08, 293.66, 349.23, 440.0], arp: [466.16, 587.33, 698.46, 880.0] },
     ],
     progression: [0, 1, 2, 3, 0, 1, 3, 2],
+    tracks: [
+      {
+        title: 'Chrome Pulse',
+        bpm: 118,
+        progression: [0, 2, 1, 3, 0, 2, 3, 1],
+        arpEvery: 2,
+        padType: 'square',
+        bassType: 'sawtooth',
+        padGain: 0.012,
+        kickPattern: [0, 4, 8, 12],
+        bassPattern: [0, 4, 8, 12],
+        hatGain: 1.2,
+      },
+      {
+        title: 'Rain Check',
+        bpm: 96,
+        progression: [0, 3, 2, 1, 0, 3, 1, 2],
+        arpEvery: 4,
+        padType: 'triangle',
+        bassType: 'triangle',
+        padGain: 0.018,
+        kickPattern: [0, 8],
+        bassPattern: [0, 8],
+        clapGain: 0.7,
+        hatGain: 0.8,
+      },
+    ],
   },
   {
     id: 'palm',
@@ -148,6 +228,83 @@ const RADIO_STATIONS = [
       { bass: 73.42, pad: [146.83, 185.0, 220.0, 261.63], arp: [293.66, 369.99, 440.0, 523.25] },
     ],
     progression: [0, 1, 2, 3, 0, 1, 2, 3],
+    tracks: [
+      {
+        title: 'Desert Mirage',
+        bpm: 72,
+        progression: [0, 2, 1, 3, 0, 2, 3, 1],
+        arpEvery: 4,
+        padType: 'sine',
+        bassType: 'triangle',
+        kickPattern: [0, 8],
+        bassPattern: [0, 8],
+        hatGain: 0.35,
+      },
+      {
+        title: 'Coastline',
+        bpm: 82,
+        progression: [0, 1, 3, 2, 0, 1, 2, 3],
+        arpEvery: 4,
+        padType: 'triangle',
+        arpType: 'triangle',
+        kickPattern: [0, 8],
+        bassPattern: [0, 8],
+        clapGain: 0.5,
+      },
+    ],
+  },
+  {
+    id: 'vice',
+    name: 'VICE 87.7',
+    frequency: '87.7',
+    tagline: 'Neon Vice',
+    ls: { name: 'LOS SANTOS 87.7', tagline: 'Sunset Strip' },
+    bpm: 96,
+    padType: 'sawtooth',
+    bassType: 'square',
+    arpType: 'triangle',
+    padGain: 0.018,
+    padFilter: [620, 1800],
+    bassGain: 0.095,
+    bassFilter: [400, 120],
+    arpGain: 0.026,
+    arpFilter: 2500,
+    kickGain: 0.27,
+    kickPattern: [0, 4, 8, 12],
+    bassPattern: [0, 4, 8, 12],
+    arpEvery: 2,
+    clapPattern: [4, 12],
+    clapGain: 1,
+    hatPattern: [2, 6, 10, 14],
+    hatGain: 1,
+    chords: [
+      { bass: 82.41, pad: [164.81, 196.0, 246.94, 293.66], arp: [329.63, 392.0, 493.88, 587.33] },
+      { bass: 65.41, pad: [130.81, 164.81, 196.0, 261.63], arp: [261.63, 329.63, 392.0, 523.25] },
+      { bass: 98.0, pad: [196.0, 246.94, 293.66, 392.0], arp: [392.0, 493.88, 587.33, 783.99] },
+      { bass: 73.42, pad: [146.83, 185.0, 220.0, 293.66], arp: [293.66, 369.99, 440.0, 587.33] },
+    ],
+    progression: [0, 1, 2, 3, 0, 2, 1, 3],
+    tracks: [
+      {
+        title: 'Strip Runner',
+        bpm: 104,
+        progression: [0, 2, 3, 1, 0, 2, 1, 3],
+        arpEvery: 2,
+        kickPattern: [0, 4, 8, 12],
+        bassPattern: [0, 4, 8, 12],
+      },
+      {
+        title: 'Pink Horizon',
+        bpm: 88,
+        progression: [0, 1, 3, 2, 0, 3, 1, 2],
+        arpEvery: 4,
+        padType: 'triangle',
+        bassType: 'sine',
+        kickPattern: [0, 8],
+        bassPattern: [0, 8],
+        clapGain: 0.6,
+      },
+    ],
   },
 ];
 
@@ -157,6 +314,17 @@ function radioStationById(id) {
 
 function stationStep(station) {
   return 60 / station.bpm / 4;
+}
+
+function stationTrackCount(station) {
+  return 1 + (Array.isArray(station.tracks) ? station.tracks.length : 0);
+}
+
+function stationTrack(station) {
+  const count = stationTrackCount(station);
+  const index = ((audio.trackIndex % count) + count) % count;
+  if (index === 0 || !Array.isArray(station.tracks)) return station;
+  return { ...station, ...station.tracks[index - 1] };
 }
 
 function ensureAudio() {
@@ -362,11 +530,19 @@ function playStep(step, t, station) {
 function scheduleRadio() {
   if (!audio.radioOn || !audio.ctx) return;
   const station = radioStationById(state.config.radioStation);
-  const stepSec = stationStep(station);
   const horizon = audio.ctx.currentTime + 0.14;
   while (audio.next < horizon) {
-    playStep(audio.step, audio.next, station);
-    audio.next += stepSec;
+    if (audio.step === 0) {
+      if (audio.trackPrimed) {
+        audio.trackIndex = (audio.trackIndex + 1) % stationTrackCount(station);
+        updateRadioUI();
+      } else {
+        audio.trackPrimed = true;
+      }
+    }
+    const track = stationTrack(station);
+    playStep(audio.step, audio.next, track);
+    audio.next += stationStep(track);
     audio.step = (audio.step + 1) % 128;
   }
 }
@@ -381,6 +557,8 @@ function startRadio({ quiet = false } = {}) {
   audio.retuneTimer = null;
   audio.radioOn = true;
   audio.step = 0;
+  audio.trackIndex = 0;
+  audio.trackPrimed = false;
   audio.next = ctx.currentTime + 0.08;
   applyMusicVolume();
   clearInterval(audio.timer);
@@ -411,6 +589,7 @@ function tuneRadio() {
     audio.retuneTimer = null;
     if (!audio.radioOn || !audio.ctx) return;
     audio.step = 0;
+    audio.trackPrimed = false;
     audio.next = audio.ctx.currentTime + 0.09;
     applyMusicVolume();
     scheduleRadio();
@@ -514,6 +693,7 @@ function selectRadioStation(id) {
   const wasOn = audio.radioOn;
 
   rememberStation(station.id);
+  if (!same) audio.trackIndex = 0;
   updateRadioUI();
   closeStationMenu({ focus: true });
 
@@ -555,8 +735,12 @@ function updateRadioUI() {
   }
   if (use) use.setAttribute('href', audio.radioOn ? '#i-pause' : '#i-play');
   const display = stationDisplay(station);
+  const track = stationTrack(station);
   if (nameEl) nameEl.textContent = display.name;
-  if (metaEl) metaEl.textContent = `${station.frequency} · ${display.tagline}`;
+  if (metaEl) {
+    const trackTitle = track.title ? ` · ${track.title}` : '';
+    metaEl.textContent = `${station.frequency} · ${display.tagline}${trackTitle}`;
+  }
 
   $$('#radioStations .station').forEach((row) => {
     const active = row.dataset.station === station.id;

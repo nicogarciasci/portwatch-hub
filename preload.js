@@ -15,6 +15,10 @@ contextBridge.exposeInMainWorld('portwatch', {
   downloads: () => ipcRenderer.invoke('download:list'),
   openDownload: (name) => ipcRenderer.invoke('download:open', name),
   chooseDownloadsDir: () => ipcRenderer.invoke('download:choose-dir'),
+  updateState: () => ipcRenderer.invoke('update:state'),
+  updateCheck: () => ipcRenderer.invoke('update:check'),
+  updateDownload: (payload) => ipcRenderer.invoke('update:download', payload),
+  updateApply: () => ipcRenderer.invoke('update:apply'),
   runtimeStatus: () => ipcRenderer.invoke('runtime:status'),
   runtimeSelect: (id) => ipcRenderer.invoke('runtime:select', id),
   dexnomStatus: () => ipcRenderer.invoke('dexnom:status'),
@@ -47,6 +51,11 @@ contextBridge.exposeInMainWorld('portwatch', {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on('download:progress', listener);
     return () => ipcRenderer.removeListener('download:progress', listener);
+  },
+  onUpdateProgress: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('update:progress', listener);
+    return () => ipcRenderer.removeListener('update:progress', listener);
   },
   onDexnomSetup: (callback) => {
     const listener = (_event, payload) => callback(payload);

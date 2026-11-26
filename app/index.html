@@ -351,7 +351,11 @@
           <p class="radio-menu-foot" data-i18n="radio.foot">Sintetizador local · todas no mesmo estilo</p>
         </div>
       </div>
-      <span class="build-tag" id="versionTag">v2.5.0</span>
+      <button class="update-pill" id="updatePill" type="button" hidden>
+        <span class="update-pill-dot" aria-hidden="true"></span>
+        <span id="updatePillText">Atualização</span>
+      </button>
+      <span class="build-tag" id="versionTag">v2.6.0</span>
     </div>
   </footer>
 
@@ -892,6 +896,27 @@
           </section>
 
           <section class="group">
+            <h3 data-i18n="settings.launcher">Launcher</h3>
+            <div class="rows">
+              <label class="row">
+                <div class="row-main"><b data-i18n="settings.autoUpdate">Verificar atualizações automaticamente</b><small data-i18n="settings.autoUpdateHint">Consulta o GitHub ao abrir e a cada 6 horas.</small></div>
+                <span class="switch"><input type="checkbox" data-bind="autoUpdateCheck"><i></i></span>
+              </label>
+              <label class="row">
+                <div class="row-main"><b data-i18n="settings.autoDownload">Baixar atualizações automaticamente</b><small data-i18n="settings.autoDownloadHint">Baixa em segundo plano; a instalação continua sendo com um clique.</small></div>
+                <span class="switch"><input type="checkbox" data-bind="autoUpdateDownload"><i></i></span>
+              </label>
+              <div class="row">
+                <div class="row-main"><b data-i18n="update.title">Atualizações do launcher</b><small id="settingsUpdateStatus">—</small></div>
+                <div class="row-actions">
+                  <button class="mini-btn" id="settingsUpdateCheck" type="button" data-i18n="update.check">Verificar agora</button>
+                </div>
+              </div>
+            </div>
+            <p class="note" data-i18n="settings.updateHint">As atualizações são publicadas no GitHub e preservam seus dados e downloads.</p>
+          </section>
+
+          <section class="group">
             <h3 data-i18n="settings.shortcuts">Atalhos</h3>
             <div class="rows">
               <div class="row"><div class="row-main"><b data-i18n="settings.race">Corrida</b><small data-i18n="settings.raceHint">Abrir a corrida</small></div><kbd>Enter</kbd></div>
@@ -910,7 +935,7 @@
             <div class="about-mark pw-about-mark"><span>PW</span></div>
             <div class="about-id">
               <p class="kicker" data-i18n="about.kicker">PORTWATCH HUB</p>
-              <h3 id="aboutVersion">v2.5.0</h3>
+              <h3 id="aboutVersion">v2.6.0</h3>
               <p data-i18n-html="about.description">Uma central de mesa para a corrida do <b>PortWatch VI</b>: leaderboard ao vivo, downloads de projetos e forks, e verificação de hardware.</p>
             </div>
           </div>
@@ -933,6 +958,25 @@
             <div><span data-i18n="about.language">Idioma</span><b id="aboutLang">Português (Brasil)</b></div>
             <div><span data-i18n="about.downloads">Pasta de downloads</span><b id="aboutDownloads" class="mono">—</b></div>
           </div>
+
+          <section class="update-card" id="updateCard">
+            <div class="update-head">
+              <div class="update-icon" aria-hidden="true"><svg class="ic"><use href="#i-refresh"></use></svg></div>
+              <div class="update-copy">
+                <b id="updateTitle" data-i18n="update.title">Atualizações do launcher</b>
+                <small id="updateSubtitle">—</small>
+              </div>
+              <span class="update-badge" id="updateBadge" hidden>v2.6.0</span>
+            </div>
+            <div class="update-progress" id="updateProgress" hidden><i id="updateBar"></i></div>
+            <div class="update-actions">
+              <button class="mini-btn" id="updateCheckBtn" type="button"><svg class="ic"><use href="#i-refresh"></use></svg><span data-i18n="update.check">Verificar agora</span></button>
+              <button class="mini-btn is-update" id="updateDownloadBtn" type="button" hidden><svg class="ic"><use href="#i-download"></use></svg><span data-i18n="update.download">Baixar atualização</span></button>
+              <button class="mini-btn is-update" id="updateApplyBtn" type="button" hidden><svg class="ic"><use href="#i-check"></use></svg><span data-i18n="update.apply">Instalar e reiniciar</span></button>
+              <button class="mini-btn" id="updateReleaseBtn" type="button"><svg class="ic"><use href="#i-external"></use></svg><span data-i18n="update.release">Ver release</span></button>
+            </div>
+            <p class="update-hint" id="updateHint" data-i18n="update.hint">A atualização vem do GitHub, é verificada por SHA-256 e preserva seus dados e downloads.</p>
+          </section>
 
           <p class="fine" data-i18n="about.fine">Fan-made e não oficial. Sem vínculo com a Rockstar Games, a Take-Two ou a Microsoft. Nenhum arquivo, chave ou executável do jogo é hospedado ou linkado aqui.</p>
         </div>

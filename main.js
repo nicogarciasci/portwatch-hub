@@ -36,6 +36,13 @@ const TRACKER_RAW = `https://raw.githubusercontent.com/${TRACKER_REPO}/main/data
 const FORKS_API = `https://api.github.com/repos/${TRACKER_REPO}/forks?per_page=100&sort=newest`;
 const UA = 'PortWatch-Hub/2.0 (+https://portwatch-vi.xyz)';
 
+const RELEASE_REPO = 'nicogarciasci/portwatch-hub';
+const RELEASE_API = `https://api.github.com/repos/${RELEASE_REPO}/releases/latest`;
+const RELEASES_URL = `https://github.com/${RELEASE_REPO}/releases/latest`;
+const UPDATES_DIR = path.join(DATA_DIR, 'updates');
+const UPDATE_CACHE = path.join(CACHE_DIR, 'update.json');
+const UPDATE_CHECK_TTL = 15 * 60 * 1000;
+
 const DEFAULT_DOWNLOADS = path.join(__dirname, 'Downloads');
 const DEXNOM_SETUP_FILE = 'Setup-DexNomRuntime.ps1';
 const DEXNOM_PLAYER = 'victory-play.exe';
@@ -64,6 +71,8 @@ const DEFAULTS = {
   dexnomInstallDir: '',
   msvcDir: '',
   dexnomRayTracing: false,
+  autoUpdateCheck: true,
+  autoUpdateDownload: false,
 };
 
 const CONFIG_KEYS = Object.keys(DEFAULTS);
@@ -132,7 +141,7 @@ function mt(key) {
 // ---------------------------------------------------------------------------
 
 function ensureDirs() {
-  for (const dir of [DATA_DIR, CACHE_DIR, TMP_DIR, LOGS_DIR]) {
+  for (const dir of [DATA_DIR, CACHE_DIR, TMP_DIR, LOGS_DIR, UPDATES_DIR]) {
     try {
       fs.mkdirSync(dir, { recursive: true });
     } catch {
@@ -175,6 +184,8 @@ function sanitizeConfig(patch) {
     next[key] = clean;
   }
   if (next.dexnomRayTracing != null) next.dexnomRayTracing = Boolean(next.dexnomRayTracing);
+  if (next.autoUpdateCheck != null) next.autoUpdateCheck = Boolean(next.autoUpdateCheck);
+  if (next.autoUpdateDownload != null) next.autoUpdateDownload = Boolean(next.autoUpdateDownload);
   if (next.githubToken != null) next.githubToken = String(next.githubToken).slice(0, 300);
   return next;
 }
@@ -622,6 +633,440 @@ function openDownloaded(name) {
   if (!target.startsWith(dir + path.sep)) return Promise.resolve({ ok: false, error: 'path' });
   if (!fs.existsSync(target)) return Promise.resolve({ ok: false, missing: true, path: target });
   return shell.openPath(target).then((error) => (error ? { ok: false, error } : { ok: true }));
+}
+
+// ---------------------------------------------------------------------------
+// Atualização do launcher
+// ---------------------------------------------------------------------------
+
+function parseVersion(value) {
+  const match = String(value || '')
+    .trim()
+    .match(/^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/);
+  if (!match) return null;
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3]),
+    pre: match[4] || '',
+  };
+}
+
+function compareVersions(a, b) {
+  const va = parseVersion(a);
+  const vb = parseVersion(b);
+  if (!va || !vb) return 0;
+  for (const key of ['major', 'minor', 'patch']) {
+    if (va[key] !== vb[key]) return va[key] > vb[key] ? 1 : -1;
+  }
+  if (va.pre === vb.pre) return 0;
+  if (!va.pre) return 1;
+  if (!vb.pre) return -1;
+  return va.pre.localeCompare(vb.pre, 'en', { numeric: true }) > 0 ? 1 : -1;
+}
+
+function pickReleaseAsset(assets, version, suffix) {
+  const exact = `PortWatch-Hub-${version}-${suffix}`;
+  return (
+    assets.find((asset) => asset && asset.name === exact) ||
+    assets.find(
+      (asset) =>
+        asset &&
+        typeof asset.name === 'string' &&
+        asset.name.toLowerCase().endsWith(`-${suffix.toLowerCase()}`)
+    ) ||
+    null
+  );
+}
+
+function mapReleaseAsset(asset) {
+  if (!asset || typeof asset.browser_download_url !== 'string') return null;
+  return {
+    name: String(asset.name || ''),
+    size: Number(asset.size) || 0,
+    url: asset.browser_download_url,
+    digest: typeof asset.digest === 'string' ? asset.digest : '',
+    updatedAt: asset.updated_at || null,
+  };
+}
+
+let updateCache = readCache(UPDATE_CACHE);
+let updateTask = null;
+let updateDownloadTask = null;
+let updateReady = null;
+let updateProgress = null;
+
+function detectReadyUpdate() {
+  const latest = updateCache && updateCache.latest;
+  if (!latest) {
+    updateReady = null;
+    return null;
+  }
+  const marker = readCache(path.join(UPDATES_DIR, safeName(latest), 'ready.json'));
+  if (
+    marker &&
+    marker.version === latest &&
+    compareVersions(marker.version, app.getVersion()) > 0 &&
+    isDir(marker.dir)
+  ) {
+    updateReady = marker;
+  } else if (
+    updateReady &&
+    (updateReady.version !== latest || compareVersions(updateReady.version, app.getVersion()) <= 0)
+  ) {
+    updateReady = null;
+  }
+  return updateReady;
+}
+
+function getUpdateState() {
+  const current = app.getVersion();
+  if (updateCache && updateCache.latest) {
+    updateCache.available = compareVersions(updateCache.latest, current) > 0;
+  }
+  if (updateReady && compareVersions(updateReady.version, current) <= 0) {
+    updateReady = null;
+  }
+  detectReadyUpdate();
+  return {
+    current,
+    latest: (updateCache && updateCache.latest) || current,
+    available: Boolean(updateCache && updateCache.available),
+    checkedAt: (updateCache && updateCache.checkedAt) || null,
+    releaseUrl: (updateCache && updateCache.releaseUrl) || RELEASES_URL,
+    notes: (updateCache && updateCache.notes) || '',
+    publishedAt: (updateCache && updateCache.publishedAt) || null,
+    assets: (updateCache && updateCache.assets) || { update: null, portable: null },
+    ready: updateReady || null,
+    checking: Boolean(updateTask),
+    downloading: Boolean(updateDownloadTask),
+    progress: updateProgress,
+    error: (updateCache && updateCache.error) || null,
+    packaged: app.isPackaged,
+  };
+}
+
+function sendUpdate(payload) {
+  updateProgress = payload;
+  if (win && !win.isDestroyed()) win.webContents.send('update:progress', payload);
+}
+
+async function checkForUpdates(force = false) {
+  if (
+    !force &&
+    updateCache &&
+    updateCache.checkedAt &&
+    Date.now() - updateCache.checkedAt < UPDATE_CHECK_TTL
+  ) {
+    return getUpdateState();
+  }
+  if (updateTask) return updateTask;
+
+  updateTask = (async () => {
+    try {
+      const res = await request(RELEASE_API, { headers: githubHeaders(), timeout: 20000 });
+      if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
+      const release = JSON.parse(res.body.toString('utf8'));
+      const latest = String(release.tag_name || '').replace(/^v/i, '');
+      if (!parseVersion(latest)) throw new Error('invalid-version');
+      const assets = Array.isArray(release.assets) ? release.assets : [];
+      const updateAsset = pickReleaseAsset(assets, latest, 'update.zip');
+      const portableAsset = pickReleaseAsset(assets, latest, 'portable.zip');
+
+      updateCache = {
+        ok: true,
+        current: app.getVersion(),
+        latest,
+        available: compareVersions(latest, app.getVersion()) > 0,
+        releaseUrl: release.html_url || RELEASES_URL,
+        notes: typeof release.body === 'string' ? release.body.slice(0, 4000) : '',
+        publishedAt: release.published_at || null,
+        assets: {
+          update: mapReleaseAsset(updateAsset),
+          portable: mapReleaseAsset(portableAsset),
+        },
+        checkedAt: Date.now(),
+        error: null,
+      };
+      writeCache(UPDATE_CACHE, updateCache);
+    } catch (err) {
+      updateCache = {
+        ...(updateCache || {}),
+        ok: false,
+        current: app.getVersion(),
+        checkedAt: Date.now(),
+        error: String(err.message || err),
+      };
+    } finally {
+      updateTask = null;
+    }
+    return getUpdateState();
+  })();
+
+  return updateTask;
+}
+
+function sha256File(file) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256');
+    const stream = fs.createReadStream(file);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('error', reject);
+    stream.on('end', () => resolve(hash.digest('hex')));
+  });
+}
+
+function readUpdateMeta(dir) {
+  const meta = readCache(path.join(dir, 'update.json'));
+  if (!meta || typeof meta !== 'object') return null;
+  return meta;
+}
+
+function findPortableExe(dir) {
+  const preferred = path.join(dir, 'PortWatch Hub.exe');
+  if (isFile(preferred)) return preferred;
+  try {
+    const entry = fs
+      .readdirSync(dir, { withFileTypes: true })
+      .find((item) => item.isFile() && /\.exe$/i.test(item.name));
+    return entry ? path.join(dir, entry.name) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function downloadUpdate(payload = {}) {
+  if (updateDownloadTask) {
+    return { ok: false, error: 'busy', state: getUpdateState() };
+  }
+  if (!updateCache || !updateCache.available) {
+    await checkForUpdates(true);
+  }
+  if (!updateCache || !updateCache.available) {
+    return { ok: false, error: 'none', state: getUpdateState() };
+  }
+
+  updateDownloadTask = (async () => {
+    let kind = payload.kind === 'full' || payload.kind === 'portable' ? 'portable' : 'update';
+    try {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const version = updateCache.latest;
+        const assets = updateCache.assets || {};
+        const asset = assets[kind === 'portable' ? 'portable' : 'update'];
+        if (!asset) {
+          if (kind === 'update' && assets.portable) {
+            kind = 'portable';
+            continue;
+          }
+          throw new Error('asset');
+        }
+
+        const baseDir = path.join(UPDATES_DIR, safeName(version));
+        const zipPath = path.join(baseDir, asset.name);
+        fs.rmSync(baseDir, { recursive: true, force: true });
+        fs.mkdirSync(baseDir, { recursive: true });
+
+        sendUpdate({
+          phase: 'download',
+          kind,
+          version,
+          percent: 0,
+          received: 0,
+          total: asset.size || 0,
+        });
+        await downloadFile(
+          asset.url,
+          zipPath,
+          (received, total) => {
+            const percent = total > 0 ? Math.min(99, Math.round((received / total) * 100)) : 0;
+            sendUpdate({
+              phase: 'download',
+              kind,
+              version,
+              percent,
+              received,
+              total: total || asset.size || 0,
+            });
+          },
+          {}
+        );
+
+        const digest = String(asset.digest || '').replace(/^sha256:/i, '').trim();
+        if (digest) {
+          sendUpdate({ phase: 'verify', kind, version, percent: 100 });
+          const actual = await sha256File(zipPath);
+          if (actual.toLowerCase() !== digest.toLowerCase()) {
+            fs.rmSync(zipPath, { force: true });
+            throw new Error('checksum');
+          }
+        }
+
+        sendUpdate({ phase: 'extract', kind, version, percent: 100 });
+        const extractDir = path.join(baseDir, kind === 'portable' ? 'portable' : 'update');
+        fs.mkdirSync(extractDir, { recursive: true });
+        await extractZip(zipPath, extractDir);
+        flattenExtracted(extractDir);
+
+        if (kind === 'update') {
+          const meta = readUpdateMeta(extractDir);
+          const electron = meta && typeof meta.electron === 'string' ? meta.electron : '';
+          if (
+            !meta ||
+            (electron && electron !== process.versions.electron) ||
+            !isFile(path.join(extractDir, 'main.js')) ||
+            !isDir(path.join(extractDir, 'app'))
+          ) {
+            fs.rmSync(extractDir, { recursive: true, force: true });
+            fs.rmSync(zipPath, { force: true });
+            if (updateCache.assets && updateCache.assets.portable) {
+              kind = 'portable';
+              continue;
+            }
+            throw new Error('layout');
+          }
+        } else if (!findPortableExe(extractDir)) {
+          throw new Error('layout');
+        }
+
+        fs.rmSync(zipPath, { force: true });
+        const marker = {
+          version,
+          kind: kind === 'portable' ? 'full' : 'app',
+          dir: extractDir,
+          asset: asset.name,
+          sha256: digest ? `sha256:${digest.toLowerCase()}` : '',
+          downloadedAt: new Date().toISOString(),
+          electron: process.versions.electron,
+        };
+        fs.writeFileSync(
+          path.join(baseDir, 'ready.json'),
+          JSON.stringify(marker, null, 2),
+          'utf8'
+        );
+        updateReady = marker;
+        sendUpdate({ phase: 'done', kind: marker.kind, version, percent: 100 });
+        return { ok: true, ...marker, state: getUpdateState() };
+      }
+      throw new Error('asset');
+    } catch (err) {
+      const detail = String(err.message || err);
+      sendUpdate({ phase: 'error', error: detail });
+      return { ok: false, error: detail, state: getUpdateState() };
+    } finally {
+      updateDownloadTask = null;
+    }
+  })();
+
+  return updateDownloadTask;
+}
+
+function psQuote(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+function buildApplyScript({ source, target, appRoot, exe, pid, log, versionDir, kind }) {
+  return [
+    "$ErrorActionPreference = 'SilentlyContinue'",
+    `$source = ${psQuote(source)}`,
+    `$target = ${psQuote(target)}`,
+    `$appRoot = ${psQuote(appRoot)}`,
+    `$exe = ${psQuote(exe)}`,
+    `$log = ${psQuote(log)}`,
+    `$versionDir = ${psQuote(versionDir)}`,
+    `$appPid = ${Number(pid) || 0}`,
+    'for ($i = 0; $i -lt 120; $i++) {',
+    '  if (-not (Get-Process -Id $appPid -ErrorAction SilentlyContinue)) { break }',
+    '  Start-Sleep -Milliseconds 500',
+    '}',
+    'Start-Sleep -Milliseconds 800',
+    `("[" + (Get-Date -Format o) + "] apply ${String(kind)} " + $source + " -> " + $target) | Out-File -FilePath $log -Append -Encoding utf8`,
+    '$rcArgs = @($source, $target, "/E", "/IS", "/IT", "/NFL", "/NDL", "/NJH", "/NJS", "/NP", "/XD", "data", "Downloads", "/R:2", "/W:1")',
+    '& robocopy @rcArgs 2>&1 | Out-File -FilePath $log -Append -Encoding utf8',
+    '$code = $LASTEXITCODE',
+    'if ($code -ge 8) {',
+    '  ("[" + (Get-Date -Format o) + "] robocopy failed: " + $code) | Out-File -FilePath $log -Append -Encoding utf8',
+    '  exit 1',
+    '}',
+    'if (Test-Path -LiteralPath $versionDir) { Remove-Item -LiteralPath $versionDir -Recurse -Force -ErrorAction SilentlyContinue }',
+    'Start-Process -FilePath $exe -WorkingDirectory $appRoot',
+    'Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue',
+    '',
+  ].join('\r\n');
+}
+
+function applyUpdate() {
+  if (!app.isPackaged) return { ok: false, error: 'dev' };
+  if (dexnomGame || savesBusy || dexnomSetup || msvcInstall) {
+    return { ok: false, error: 'busy' };
+  }
+  if (!updateReady || !isDir(updateReady.dir)) {
+    detectReadyUpdate();
+  }
+  if (!updateReady || !isDir(updateReady.dir)) {
+    return { ok: false, error: 'ready' };
+  }
+
+  const source = path.resolve(updateReady.dir);
+  const updatesRoot = path.resolve(UPDATES_DIR);
+  if (!source.startsWith(updatesRoot + path.sep)) {
+    return { ok: false, error: 'ready' };
+  }
+
+  const appRoot = path.resolve(ROOT, '..');
+  const target =
+    updateReady.kind === 'full' ? appRoot : path.join(appRoot, 'resources', 'app');
+  if (!isDir(target)) return { ok: false, error: 'ready' };
+
+  const versionDir = path.join(UPDATES_DIR, safeName(updateReady.version));
+  const scriptPath = path.join(UPDATES_DIR, `apply-${safeName(updateReady.version)}.ps1`);
+  const logPath = path.join(UPDATES_DIR, `apply-${safeName(updateReady.version)}.log`);
+  const script = buildApplyScript({
+    source,
+    target,
+    appRoot,
+    exe: process.execPath,
+    pid: process.pid,
+    log: logPath,
+    versionDir,
+    kind: updateReady.kind,
+  });
+
+  try {
+    ensureDirs();
+    fs.writeFileSync(scriptPath, `\uFEFF${script}`, 'utf8');
+    const child = spawn(
+      'cmd.exe',
+      [
+        '/c',
+        'start',
+        '',
+        '/min',
+        'powershell.exe',
+        '-NoLogo',
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-WindowStyle',
+        'Hidden',
+        '-File',
+        scriptPath,
+      ],
+      { detached: true, stdio: 'ignore', windowsHide: true }
+    );
+    child.unref();
+  } catch (err) {
+    return { ok: false, error: 'spawn', detail: String(err.message || err) };
+  }
+
+  setTimeout(() => app.quit(), 900);
+  return {
+    ok: true,
+    restarting: true,
+    version: updateReady.version,
+    kind: updateReady.kind,
+    log: logPath,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1768,6 +2213,7 @@ function snapshotState() {
       downloads: cfg.downloadsDir || DEFAULT_DOWNLOADS,
     },
     downloadsDir: cfg.downloadsDir || DEFAULT_DOWNLOADS,
+    update: getUpdateState(),
   };
 }
 
@@ -1791,6 +2237,11 @@ ipcMain.handle('config:reset', () => {
 ipcMain.handle('download:repo', (_event, payload) => downloadRepo(payload || {}));
 ipcMain.handle('download:list', () => listDownloads());
 ipcMain.handle('download:open', (_event, name) => openDownloaded(name));
+
+ipcMain.handle('update:state', () => getUpdateState());
+ipcMain.handle('update:check', () => checkForUpdates(true));
+ipcMain.handle('update:download', (_event, payload) => downloadUpdate(payload || {}));
+ipcMain.handle('update:apply', () => applyUpdate());
 
 ipcMain.handle('download:pick-dir', async () => {
   const result = await dialog.showOpenDialog(win, {

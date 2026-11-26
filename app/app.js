@@ -8,6 +8,7 @@ const IS_DESKTOP = Boolean(window.portwatch && window.portwatch.isDesktop);
 const LS_KEY = 'portwatch-hub.config';
 const SITE_URL = 'https://portwatch-vi.xyz/';
 const TRACKER_GITHUB = 'https://github.com/4lwayz/portwatch-vi';
+const RELEASES_URL = 'https://github.com/nicogarciasci/portwatch-hub/releases/latest';
 
 const DEFAULTS = {
   language: null,
@@ -29,6 +30,8 @@ const DEFAULTS = {
   dexnomRuntime: '',
   dexnomInstallDir: '',
   dexnomRayTracing: false,
+  autoUpdateCheck: true,
+  autoUpdateDownload: false,
 };
 
 const VIEW_META = {
@@ -44,7 +47,7 @@ const VIEW_META = {
 const state = {
   config: { ...DEFAULTS },
   defaults: { ...DEFAULTS },
-  appVersion: '2.5.0',
+  appVersion: '2.6.0',
   site: SITE_URL,
   trackerRepo: TRACKER_GITHUB,
   tracker: null,
@@ -73,6 +76,23 @@ const state = {
     loading: false,
     busy: false,
   },
+  update: {
+    current: '2.6.0',
+    latest: '',
+    available: false,
+    checkedAt: null,
+    releaseUrl: RELEASES_URL,
+    notes: '',
+    publishedAt: null,
+    assets: { update: null, portable: null },
+    ready: null,
+    checking: false,
+    downloading: false,
+    applying: false,
+    progress: null,
+    error: null,
+    packaged: false,
+  },
   dlQuery: '',
   filter: 'all',
   sort: 'score',
@@ -91,6 +111,8 @@ let activeView = null;
 let lastFocus = null;
 let refreshTimer = null;
 let tickTimer = null;
+let updateTimer = null;
+let updateBootTimer = null;
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -428,6 +450,8 @@ async function loadState() {
       state.site = snap.site || SITE_URL;
       state.trackerRepo = snap.tracker || TRACKER_GITHUB;
       state.downloads.dir = snap.downloadsDir || state.config.downloadsDir || '';
+      if (snap.update) state.update = { ...state.update, ...snap.update };
+      state.update.current = state.appVersion;
     } catch {
       toast(t('toast.state'), 'bad');
     }
@@ -465,6 +489,13 @@ function applyStateToUI() {
   const reduce = draft ? draft.reduceMotion : state.config.reduceMotion;
 
   document.body.classList.toggle('reduce-motion', Boolean(reduce));
+  if (reduce) {
+    const scene = $('#scene');
+    if (scene) {
+      scene.style.setProperty('--mx', '0');
+      scene.style.setProperty('--my', '0');
+    }
+  }
   applyTheme(theme);
   syncControlsFrom(source);
 
@@ -507,6 +538,8 @@ async function refreshState() {
     state.site = snap.site || SITE_URL;
     state.trackerRepo = snap.tracker || TRACKER_GITHUB;
     state.downloads.dir = snap.downloadsDir || state.config.downloadsDir || '';
+    if (snap.update) state.update = { ...state.update, ...snap.update };
+    state.update.current = state.appVersion;
   } catch {
     /* mantém o estado atual */
   }
@@ -2254,6 +2287,310 @@ function renderAbout() {
   if (dir) dir.textContent = state.config.downloadsDir || state.downloads.dir || '—';
   const refresh = $('#aboutRefresh');
   if (refresh) refresh.textContent = `${state.config.refreshMinutes || 5} min`;
+
+  renderUpdate();
+}
+
+/* =========================================================================
+   ATUALIZAÇÃO DO LAUNCHER
+   ========================================================================= */
+
+function updateProgressPercent() {
+  const progress = state.update.progress;
+  if (!progress) return 0;
+  if (progress.phase === 'verify' || progress.phase === 'extract' || progress.phase === 'done') {
+    return 100;
+  }
+  return Math.max(0, Math.min(100, Number(progress.percent) || 0));
+}
+
+function renderUpdate() {
+  const update = state.update;
+  const ready = update.ready;
+  const available = Boolean(update.available && !ready);
+
+  const pill = $('#updatePill');
+  const pillText = $('#updatePillText');
+  if (pill) {
+    pill.hidden = !(IS_DESKTOP && (ready || available));
+    pill.classList.toggle('is-ready', Boolean(ready));
+    if (pillText) {
+      if (ready) pillText.textContent = t('update.pillReady', { version: ready.version });
+      else if (available) pillText.textContent = t('update.pillAvailable', { version: update.latest });
+    }
+  }
+
+  const badge = $('#updateBadge');
+  if (badge) {
+    badge.hidden = !(ready || available);
+    if (ready || available) badge.textContent = `v${ready ? ready.version : update.latest}`;
+  }
+
+  const card = $('#updateCard');
+  if (card) {
+    card.classList.toggle('is-ready', Boolean(ready));
+    card.classList.toggle('has-update', available);
+    card.classList.toggle('is-error', Boolean(update.error));
+  }
+
+  const title = $('#updateTitle');
+  if (title) title.textContent = t('update.title');
+
+  const subtitle = $('#updateSubtitle');
+  if (subtitle) {
+    if (update.error) subtitle.textContent = t('update.errorSub', { error: update.error });
+    else if (update.checking) subtitle.textContent = t('update.checking');
+    else if (update.downloading) {
+      const phase = (update.progress && update.progress.phase) || 'download';
+      if (phase === 'verify') subtitle.textContent = t('update.verifying');
+      else if (phase === 'extract') subtitle.textContent = t('update.extracting');
+      else subtitle.textContent = t('update.downloading', { percent: updateProgressPercent() });
+    } else if (ready) subtitle.textContent = t('update.readySub', { version: ready.version });
+    else if (available) {
+      subtitle.textContent = t('update.availableSub', {
+        current: update.current,
+        latest: update.latest,
+      });
+    } else if (update.checkedAt) {
+      subtitle.textContent = t('update.upToDateSub', { version: update.current });
+    } else {
+      subtitle.textContent = t('update.idleSub');
+    }
+  }
+
+  const checkBtn = $('#updateCheckBtn');
+  if (checkBtn) checkBtn.disabled = Boolean(update.checking || update.downloading || update.applying);
+  const downloadBtn = $('#updateDownloadBtn');
+  if (downloadBtn) {
+    downloadBtn.hidden = !available;
+    downloadBtn.disabled = Boolean(update.downloading || update.checking);
+  }
+  const applyBtn = $('#updateApplyBtn');
+  if (applyBtn) {
+    applyBtn.hidden = !ready;
+    applyBtn.disabled = Boolean(update.applying || update.downloading);
+  }
+  const releaseBtn = $('#updateReleaseBtn');
+  if (releaseBtn) releaseBtn.disabled = !update.releaseUrl;
+
+  const progress = $('#updateProgress');
+  const bar = $('#updateBar');
+  if (progress && bar) {
+    progress.hidden = !update.downloading;
+    bar.style.width = `${update.downloading ? updateProgressPercent() : 0}%`;
+  }
+
+  const hint = $('#updateHint');
+  if (hint) {
+    if (ready) hint.textContent = t('update.readyHint');
+    else if (update.error) hint.textContent = t('update.errorHint');
+    else hint.textContent = t('update.hint');
+  }
+
+  const settingsStatus = $('#settingsUpdateStatus');
+  if (settingsStatus) {
+    if (update.error) settingsStatus.textContent = t('update.settingsError');
+    else if (update.checking) settingsStatus.textContent = t('update.checking');
+    else if (ready) settingsStatus.textContent = t('update.settingsReady', { version: ready.version });
+    else if (available) {
+      settingsStatus.textContent = t('update.settingsAvailable', { version: update.latest });
+    } else {
+      settingsStatus.textContent = t('update.settingsCurrent', { version: update.current });
+    }
+  }
+}
+
+async function checkLauncherUpdate({ silent = false, force = true } = {}) {
+  if (!IS_DESKTOP) {
+    if (!silent) toast(t('toast.openDesktop'), 'warn');
+    return;
+  }
+  if (state.update.checking || state.update.downloading) return;
+
+  state.update.checking = true;
+  state.update.error = null;
+  renderUpdate();
+
+  try {
+    const result = await window.portwatch.updateCheck();
+    state.update = { ...state.update, ...(result || {}), checking: false };
+    renderUpdate();
+
+    if (result && result.error) {
+      if (!silent) toast(t('toast.updateError'), 'warn');
+      return;
+    }
+    if (result && result.available) {
+      if (!silent) toast(t('toast.updateAvailable', { version: result.latest }));
+      if (state.config.autoUpdateDownload && !result.ready) {
+        await downloadLauncherUpdate({ auto: true });
+      }
+    } else if (!silent) {
+      toast(t('toast.updateLatest'));
+    }
+  } catch (err) {
+    state.update.checking = false;
+    state.update.error = String(err && err.message ? err.message : err);
+    renderUpdate();
+    if (!silent) toast(t('toast.updateError'), 'warn');
+  }
+}
+
+async function downloadLauncherUpdate({ auto = false } = {}) {
+  if (!IS_DESKTOP || state.update.downloading) return;
+
+  state.update.downloading = true;
+  state.update.error = null;
+  state.update.progress = { phase: 'download', percent: 0 };
+  renderUpdate();
+
+  try {
+    const result = await window.portwatch.updateDownload({});
+    const next = (result && result.state) || {};
+    state.update = {
+      ...state.update,
+      ...next,
+      downloading: false,
+      applying: false,
+      progress: result && result.ok ? null : state.update.progress,
+    };
+
+    if (!result || !result.ok) {
+      state.update.error = (result && result.error) || 'download';
+      renderUpdate();
+      toast(t('toast.updateDownloadError'), 'bad');
+      return;
+    }
+
+    renderUpdate();
+    toast(t(auto ? 'toast.updateReadyAuto' : 'toast.updateReady', { version: result.version }));
+  } catch (err) {
+    state.update.downloading = false;
+    state.update.error = String(err && err.message ? err.message : err);
+    renderUpdate();
+    toast(t('toast.updateDownloadError'), 'bad');
+  }
+}
+
+function handleUpdateProgress(payload) {
+  if (!payload) return;
+  state.update.progress = payload;
+  if (payload.phase === 'download' || payload.phase === 'verify' || payload.phase === 'extract') {
+    state.update.downloading = true;
+  }
+  if (payload.phase === 'done') {
+    state.update.downloading = false;
+    state.update.error = null;
+  }
+  if (payload.phase === 'error') {
+    state.update.downloading = false;
+    state.update.error = payload.error || 'download';
+  }
+  renderUpdate();
+}
+
+function applyLauncherUpdate() {
+  if (!IS_DESKTOP || !state.update.ready || state.update.applying) return;
+
+  if (!state.update.packaged) {
+    showDialog({
+      title: t('update.devTitle'),
+      message: t('update.devMessage'),
+      confirmLabel: t('dlg.close'),
+    });
+    return;
+  }
+
+  const version = state.update.ready.version;
+  showDialog({
+    title: t('update.confirmTitle'),
+    message: t('update.confirmMessage', { version }),
+    detail: t('update.confirmDetail'),
+    confirmLabel: t('update.confirmApply'),
+    cancelLabel: t('update.confirmLater'),
+    onConfirm: async () => {
+      state.update.applying = true;
+      renderUpdate();
+      try {
+        const result = await window.portwatch.updateApply();
+        if (!result || !result.ok) {
+          state.update.applying = false;
+          renderUpdate();
+          const error = result && result.error;
+          if (error === 'dev') {
+            showDialog({
+              title: t('update.devTitle'),
+              message: t('update.devMessage'),
+              confirmLabel: t('dlg.close'),
+            });
+          } else if (error === 'busy') {
+            showDialog({
+              title: t('update.busyTitle'),
+              message: t('update.busyMessage'),
+              confirmLabel: t('dlg.close'),
+            });
+          } else {
+            showDialog({
+              title: t('update.errorTitle'),
+              message: t('update.errorMessage'),
+              confirmLabel: t('dlg.close'),
+            });
+          }
+          return;
+        }
+        toast(t('update.restarting'), 'ok', 12000);
+      } catch (err) {
+        state.update.applying = false;
+        renderUpdate();
+        showDialog({
+          title: t('update.errorTitle'),
+          message: t('update.errorMessage'),
+          detail: String(err && err.message ? err.message : err),
+          confirmLabel: t('dlg.close'),
+        });
+      }
+    },
+  });
+}
+
+function scheduleUpdateChecks() {
+  if (updateBootTimer) {
+    window.clearTimeout(updateBootTimer);
+    updateBootTimer = null;
+  }
+  if (updateTimer) {
+    window.clearInterval(updateTimer);
+    updateTimer = null;
+  }
+  if (!IS_DESKTOP || !state.config.autoUpdateCheck) return;
+
+  updateBootTimer = window.setTimeout(() => {
+    checkLauncherUpdate({ silent: true });
+  }, 5000);
+  updateTimer = window.setInterval(() => {
+    checkLauncherUpdate({ silent: true });
+  }, 6 * 60 * 60 * 1000);
+}
+
+function bindUpdate() {
+  const pill = $('#updatePill');
+  if (pill) pill.addEventListener('click', () => openView('about'));
+
+  const check = $('#updateCheckBtn');
+  if (check) check.addEventListener('click', () => checkLauncherUpdate({ silent: false, force: true }));
+  const settingsCheck = $('#settingsUpdateCheck');
+  if (settingsCheck) {
+    settingsCheck.addEventListener('click', () => checkLauncherUpdate({ silent: false, force: true }));
+  }
+
+  const download = $('#updateDownloadBtn');
+  if (download) download.addEventListener('click', () => downloadLauncherUpdate());
+  const apply = $('#updateApplyBtn');
+  if (apply) apply.addEventListener('click', applyLauncherUpdate);
+  const release = $('#updateReleaseBtn');
+  if (release) {
+    release.addEventListener('click', () => openExternal(state.update.releaseUrl || RELEASES_URL));
+  }
 }
 
 /* =========================================================================
@@ -2504,6 +2841,7 @@ async function saveSettings() {
     if (state.config.radioOn) resumeRadioIfEnabled();
     else if (audio.radioOn) stopRadio();
     restartRefreshTimer();
+    scheduleUpdateChecks();
     closeSheet();
     toast(t('toast.saved'));
     blip({ freq: 620, slide: 1.5, dur: 0.09, gain: 0.015, type: 'triangle' });
@@ -2902,6 +3240,7 @@ async function boot() {
   bindSettings();
   bindHardware();
   bindAbout();
+  bindUpdate();
   bindLanguage();
   bindShortcuts();
   bindRadio();
@@ -2919,10 +3258,14 @@ async function boot() {
   if (IS_DESKTOP && window.portwatch.onDexnomMsvc) {
     window.portwatch.onDexnomMsvc(handleDexnomMsvc);
   }
+  if (IS_DESKTOP && window.portwatch.onUpdateProgress) {
+    window.portwatch.onUpdateProgress(handleUpdateProgress);
+  }
 
   renderRace();
   renderDownloads();
   restartRefreshTimer();
+  scheduleUpdateChecks();
 
   document.body.classList.remove('is-loading');
   document.body.classList.add('ready');

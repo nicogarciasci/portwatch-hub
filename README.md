@@ -27,8 +27,8 @@ Se o Windows SmartScreen avisar que o app não tem assinatura, clique em **Mais 
 - **Hardware:** detecta CPU, GPU, VRAM, RAM e armazenamento, permite simular outras peças e compara o PC com alvos de 1080p a 4K. Repertório com cerca de 75 GPUs e 60 CPUs em escala relativa.
 - **Temas:** **Vice City** (padrão) e **Los Santos**, com cenário, cores e rádio próprios.
 - **Trilíngue:** Português (Brasil), English e Español, com escolha na primeira abertura e troca imediata em Ajustes.
-- **Rádio local:** estações synthwave geradas por WebAudio no próprio launcher, sem internet.
-- **Cena com parallax:** céu, sol, skyline e reflexo na água reagindo ao mouse.
+- **Rádio local:** cinco estações synthwave geradas por WebAudio no próprio launcher, sem internet, com três faixas internas que alternam sozinhas.
+- **Cena com parallax:** céu, sol, skyline, cidade, colinas e reflexo na água reagindo ao mouse nas duas cenas.
 - **Atualização automática:** o tracker é recarregado no intervalo escolhido (1 a 60 minutos) e pode ser atualizado na hora com o botão ou a tecla `R`.
 
 O hub **não** hospeda, baixa nem linka arquivos do jogo, chaves ou executáveis. Os downloads são apenas os ZIPs públicos dos repositórios do GitHub.
@@ -156,7 +156,7 @@ A detecção lê o nome da GPU, a VRAM, o modelo e os núcleos da CPU, a quantid
 - **Vice City** (padrão): anoitecer neon em Leonida, sol listrado, palmeiras e oceano.
 - **Los Santos**: sol de San Andreas, colinas, cidade e pier ao entardecer.
 
-A troca é imediata em **Ajustes → Aparência** e muda o cenário, as cores dos menus, os destaques e até os nomes das estações de rádio. A preferência fica salva.
+A troca é imediata em **Ajustes → Aparência** e muda o cenário, as cores dos menus, os destaques e até os nomes das estações de rádio. A preferência fica salva. As duas cenas têm parallax próprio: sol, skyline/cidade, colinas, água e reflexos acompanham o mouse em profundidades diferentes.
 
 ## Atalhos
 
@@ -167,7 +167,7 @@ A troca é imediata em **Ajustes → Aparência** e muda o cenário, as cores do
 | `Esc` | Fecha menus, diálogos e a folha |
 | `F11` | Alterna tela cheia |
 
-A rádio fica no canto direito do dock e começa tocando. Clique no nome ou na seta para abrir a lista de estações; clique no botão redondo para pausar ou continuar. A estação e o estado ficam salvos.
+A rádio fica no canto direito do dock e começa tocando. Clique no nome ou na seta para abrir a lista de estações; clique no botão redondo para pausar ou continuar. Cada estação tem três faixas internas: o nome da faixa atual aparece no dock e a troca acontece sozinha a cada volta da progressão. A estação e o estado ficam salvos.
 
 ## Ajustes úteis
 
@@ -185,6 +185,20 @@ A rádio fica no canto direito do dock e começa tocando. Clique no nome ou na s
 
 As preferências ficam em `data\config.json`.
 
+## Atualizações do launcher
+
+O PortWatch Hub consulta as releases do GitHub ao abrir e a cada 6 horas. Quando existe uma versão mais nova:
+
+- mostra um aviso no rodapé e um cartão na aba **Sobre**;
+- baixa o pacote de atualização, confere o SHA-256 e prepara os arquivos;
+- instala com um clique e reabre o launcher.
+
+A atualização preserva `data\config.json`, os saves, os logs e a pasta de downloads. O launcher portátil não precisa de instalador: o próprio app substitui os arquivos e reabre.
+
+Em **Ajustes → Launcher** dá para desligar a verificação automática ou permitir o download em segundo plano. A instalação continua sendo confirmada por você.
+
+Quem estiver na **2.5.0** ou anterior precisa baixar a **2.6.0** uma única vez pela release. A partir dela, as próximas versões chegam pelo próprio launcher.
+
 ## Estrutura
 
 ```
@@ -192,7 +206,7 @@ PortWatch Hub/
   INICIAR.cmd        inicializador: confere o Node, instala dependências e abre
   CRIAR-ATALHO.cmd   cria o atalho na área de trabalho
   ABRIR-LAUNCHER.vbs abre sem janela de console
-  main.js            processo principal (janela, IPC, tracker, forks, downloads, runtimes)
+  main.js            processo principal (janela, IPC, tracker, forks, downloads, runtimes e atualizações)
   hardware-main.js   detecção de hardware isolada
   preload.js         ponte segura para o renderer (window.portwatch)
   preview.js         servidor de preview com proxies do tracker e forks
@@ -213,6 +227,7 @@ PortWatch Hub/
     ...              captura de tela, teste via CDP e gerador de ícone
   data/config.json   preferências salvas (criado em tempo de execução)
   data/logs/         logs de preparação por fork (criados em tempo de execução)
+  data/updates/      pacotes baixados e script de instalação (criado em tempo de execução)
 ```
 
 O ícone da janela e do atalho é `app\assets\icon.ico`. Para trocar, substitua `icon.png` e rode `npm run icon`; o script gera um ICO com tamanhos de 16 a 256 px. O `CRIAR-ATALHO.cmd` usa esse ícone.
