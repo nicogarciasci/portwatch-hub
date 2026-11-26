@@ -256,7 +256,7 @@
           <span class="play-badge"><svg class="ic"><use href="#i-trophy"></use></svg></span>
           <span class="play-label" data-i18n="hero.race">VER CORRIDA</span>
         </button>
-        <button class="btn-play btn-play-alt" id="homePlay" title="Executar o GTA VI com a fork DexNom" data-i18n-title="hero.playTitle">
+        <button class="btn-play btn-play-alt" id="homePlay" title="Executar o GTA VI com a fork selecionada" data-i18n-title="hero.playTitle">
           <span class="play-badge"><svg class="ic"><use href="#i-gamepad"></use></svg></span>
           <span class="play-label" data-i18n="hero.play">EXECUTAR</span>
         </button>
@@ -351,7 +351,7 @@
           <p class="radio-menu-foot" data-i18n="radio.foot">Sintetizador local · todas no mesmo estilo</p>
         </div>
       </div>
-      <span class="build-tag" id="versionTag">v2.4.0</span>
+      <span class="build-tag" id="versionTag">v2.5.0</span>
     </div>
   </footer>
 
@@ -421,7 +421,7 @@
         <div class="view" data-view="play">
           <div class="view-head">
             <div class="view-head-copy">
-              <p class="view-sub" data-i18n="play.sub">Inicie o GTA VI com a fork DexNom instalada no seu PC. O launcher prepara o runtime, guarda o caminho do seu jogo e abre o jogo.</p>
+              <p class="view-sub" data-i18n="play.sub">Inicie o GTA VI com qualquer fork VIctory baixada no seu PC. O launcher detecta a fork, prepara o runtime e abre o jogo.</p>
             </div>
             <div class="view-head-actions">
               <button class="mini-btn" id="playRefresh" type="button"><svg class="ic"><use href="#i-refresh"></use></svg><span data-i18n="play.refresh">Verificar</span></button>
@@ -430,14 +430,10 @@
 
           <section class="play-hero">
             <div class="play-hero-copy">
-              <span class="label" data-i18n="play.kicker">DEXNOM RUNTIME</span>
-              <h3>DexNom Runtime</h3>
-              <p data-i18n="play.desc">Fork do VIctory para AMD Radeon. Compila e instala o runtime no seu PC, sem baixar arquivos do jogo.</p>
-              <div class="play-tags">
-                <span class="play-tag">AMD Radeon</span>
-                <span class="play-tag">Direct3D 12</span>
-                <span class="play-tag" data-i18n="play.tagRt">Ray tracing opcional</span>
-              </div>
+              <span class="label" data-i18n="play.kicker">FORK / RUNTIME</span>
+              <h3 id="playHeroName">—</h3>
+              <p id="playHeroDesc" data-i18n="play.desc">Escolha uma fork baixada. O launcher usa o instalador ou o script de execução que ela traz.</p>
+              <div class="play-tags" id="playHeroTags"></div>
             </div>
             <div class="play-hero-art" aria-hidden="true">
               <svg class="ic"><use href="#i-gamepad"></use></svg>
@@ -455,7 +451,8 @@
                 <li class="play-check" id="playCheckSource">
                   <span class="play-dot" aria-hidden="true"></span>
                   <div class="play-check-main">
-                    <b data-i18n="play.source">Fork DexNom</b>
+                    <b data-i18n="play.source">Fork / runtime</b>
+                    <select class="play-select" id="playForkSelect" aria-label="Fork / runtime"></select>
                     <small class="play-path" id="playSourcePath">—</small>
                   </div>
                   <button class="mini-btn" id="playChooseSource" type="button"><svg class="ic"><use href="#i-folder"></use></svg><span data-i18n="play.chooseSource">Escolher pasta</span></button>
@@ -471,7 +468,7 @@
                 <li class="play-check" id="playCheckInstall">
                   <span class="play-dot" aria-hidden="true"></span>
                   <div class="play-check-main">
-                    <b data-i18n="play.installDir">Pasta de instalação</b>
+                    <b id="playInstallLabel" data-i18n="play.installDir">Pasta de instalação</b>
                     <small class="play-path" id="playInstallPath">—</small>
                   </div>
                   <button class="mini-btn" id="playChooseInstall" type="button"><svg class="ic"><use href="#i-folder"></use></svg><span data-i18n="play.chooseInstall">Escolher pasta</span></button>
@@ -495,7 +492,7 @@
                 <li class="play-check" id="playCheckRuntime">
                   <span class="play-dot" aria-hidden="true"></span>
                   <div class="play-check-main">
-                    <b data-i18n="play.runtime">Runtime instalado</b>
+                    <b data-i18n="play.runtime">Runtime pronto</b>
                     <small class="play-path" id="playRuntimePath">—</small>
                   </div>
                   <button class="mini-btn" id="playOpenRuntime" type="button"><svg class="ic"><use href="#i-folder"></use></svg><span data-i18n="play.open">Abrir</span></button>
@@ -524,7 +521,7 @@
 
               <label class="play-rt">
                 <input type="checkbox" id="playRt">
-                <span data-i18n="play.rt">Ray tracing experimental (--rt)</span>
+                <span id="playRtLabel" data-i18n="play.rt">Ray tracing experimental</span>
               </label>
               <p class="note" data-i18n="play.thirdParty">A fork é código de terceiros: compilar e executar roda código no seu PC. Use por sua conta e risco.</p>
             </section>
@@ -713,7 +710,7 @@
         <div class="view" data-view="saves">
           <div class="view-head">
             <div class="view-head-copy">
-              <p class="view-sub" data-i18n="saves.sub">Instale, faça backup e remova os saves do GTA VI usados pelo runtime DexNom. Os saves ficam fora da pasta do jogo.</p>
+              <p class="view-sub" data-i18n="saves.sub">Instale, faça backup e remova os saves do GTA VI usados pelo runtime selecionado na aba Jogar. Os saves ficam fora da pasta do jogo.</p>
             </div>
             <div class="view-head-actions">
               <button class="mini-btn" id="savesRefresh" type="button"><svg class="ic"><use href="#i-refresh"></use></svg><span data-i18n="saves.refresh">Atualizar</span></button>
@@ -731,7 +728,7 @@
                 <li class="play-check" id="savesCheckRuntime">
                   <span class="play-dot" aria-hidden="true"></span>
                   <div class="play-check-main">
-                    <b data-i18n="saves.runtime">Runtime DexNom</b>
+                    <b data-i18n="saves.runtime">Runtime selecionado</b>
                     <small class="play-path" id="savesRuntimePath">—</small>
                   </div>
                 </li>
@@ -764,7 +761,7 @@
                 <button class="mini-btn is-danger" id="savesDelete" type="button"><svg class="ic"><use href="#i-trash"></use></svg><span data-i18n="saves.delete">Deletar</span></button>
               </div>
 
-              <p class="note" data-i18n="saves.installHint">Aceita um ZIP ou uma pasta com a pasta de saves do DexNom, a pasta do usuário (16 dígitos) ou a pasta de configuração (ex.: default). Um backup automático é criado antes de substituir.</p>
+              <p class="note" data-i18n="saves.installHint">Aceita um ZIP ou uma pasta com a pasta de saves do runtime, a pasta do usuário (16 dígitos) ou a pasta de configuração (ex.: default). Um backup automático é criado antes de substituir.</p>
               <p class="note saves-meta" id="savesNote"></p>
             </section>
 
@@ -913,7 +910,7 @@
             <div class="about-mark pw-about-mark"><span>PW</span></div>
             <div class="about-id">
               <p class="kicker" data-i18n="about.kicker">PORTWATCH HUB</p>
-              <h3 id="aboutVersion">v2.4.0</h3>
+              <h3 id="aboutVersion">v2.5.0</h3>
               <p data-i18n-html="about.description">Uma central de mesa para a corrida do <b>PortWatch VI</b>: leaderboard ao vivo, downloads de projetos e forks, e verificação de hardware.</p>
             </div>
           </div>

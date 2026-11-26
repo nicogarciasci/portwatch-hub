@@ -4,6 +4,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell, screen } = require('electron
 const path = require('node:path');
 const fs = require('node:fs');
 const https = require('node:https');
+const crypto = require('node:crypto');
 const { execFile, spawn } = require('node:child_process');
 const { createHardware } = require('./hardware-main');
 const savesStore = require('./saves');
@@ -55,6 +56,9 @@ const DEFAULTS = {
   startFullscreen: false,
   reduceMotion: false,
   gameExe: '',
+  runtimeFork: '',
+  runtimeSources: {},
+  forkInstalls: {},
   dexnomSource: '',
   dexnomRuntime: '',
   dexnomInstallDir: '',
@@ -155,8 +159,20 @@ function sanitizeConfig(patch) {
   if (next.downloadsDir != null && typeof next.downloadsDir !== 'string') {
     next.downloadsDir = DEFAULT_DOWNLOADS;
   }
-  for (const key of ['gameExe', 'dexnomSource', 'dexnomRuntime', 'dexnomInstallDir', 'msvcDir']) {
+  for (const key of ['gameExe', 'runtimeFork', 'dexnomSource', 'dexnomRuntime', 'dexnomInstallDir', 'msvcDir']) {
     if (next[key] != null && typeof next[key] !== 'string') next[key] = '';
+  }
+  for (const key of ['runtimeSources', 'forkInstalls']) {
+    const value = next[key];
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      next[key] = {};
+      continue;
+    }
+    const clean = {};
+    for (const [id, dir] of Object.entries(value)) {
+      if (typeof dir === 'string' && dir.trim()) clean[String(id)] = dir;
+    }
+    next[key] = clean;
   }
   if (next.dexnomRayTracing != null) next.dexnomRayTracing = Boolean(next.dexnomRayTracing);
   if (next.githubToken != null) next.githubToken = String(next.githubToken).slice(0, 300);
@@ -554,6 +570,14 @@ async function downloadRepo({ repo, branch, name, dir } = {}) {
     fs.mkdirSync(destination, { recursive: true });
     await extractZip(zipPath, destination);
     flattenExtracted(destination);
+    const source = victorySourceIn(destination);
+    if (source) {
+      const profile = buildForkProfile(source);
+      saveConfig({
+        runtimeFork: profile.id,
+        runtimeSources: { ...(cfg.runtimeSources || {}), [profile.id]: source },
+      });
+    }
     fs.rmSync(zipPath, { force: true });
     sendDownload({ repo, phase: 'done', percent: 100 });
     return { ok: true, path: destination, name: label, repo };
@@ -659,9 +683,35 @@ function execText(file, args, timeout = 15000) {
   });
 }
 
-function dexnomSetupIn(dir) {
+function forkSlug(dir) {
+  return (
+    path
+      .basename(path.resolve(dir))
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'fork'
+  );
+}
+
+function forkId(dir) {
+  const hash = crypto.createHash('sha1').update(path.resolve(dir).toLowerCase()).digest('hex').slice(0, 6);
+  return `${forkSlug(dir)}-${hash}`;
+}
+
+function forkDisplayName(dir) {
+  const base = path.basename(path.resolve(dir));
+  const match = /^([a-z0-9][a-z0-9._-]*?)-(.+)$/i.exec(base);
+  if (match && match[1].toLowerCase() !== 'setup') return `${match[1]}/${match[2]}`;
+  return base;
+}
+
+function isDexnomSource(source, setupScript) {
+  return /dexnom/i.test(path.basename(source)) || /dexnom/i.test(setupScript || '');
+}
+
+function victorySourceIn(dir) {
   if (!isDir(dir)) return null;
-  if (isFile(path.join(dir, DEXNOM_SETUP_FILE))) return path.resolve(dir);
+  if (isFile(path.join(dir, '.victory-root'))) return path.resolve(dir);
   let entries = [];
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -672,9 +722,44 @@ function dexnomSetupIn(dir) {
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const child = path.join(dir, entry.name);
-    if (isFile(path.join(child, DEXNOM_SETUP_FILE))) matches.push(child);
+    if (isFile(path.join(child, '.victory-root'))) matches.push(child);
   }
   return matches.length === 1 ? path.resolve(matches[0]) : null;
+}
+
+function setupScriptIn(dir) {
+  let entries = [];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return '';
+  }
+  const scripts = entries
+    .filter((entry) => entry.isFile() && /^setup.*\.ps1$/i.test(entry.name))
+    .map((entry) => entry.name)
+    .sort((a, b) => {
+      const dexnom = /dexnom/i.test(a) ? 0 : 1;
+      const other = /dexnom/i.test(b) ? 0 : 1;
+      return dexnom - other || a.localeCompare(b);
+    });
+  return scripts.length ? path.join(dir, scripts[0]) : '';
+}
+
+function playScriptIn(dir) {
+  const script = path.join(dir, 'scripts', 'play.ps1');
+  return isFile(script) ? script : '';
+}
+
+function builtVictoryExe(dir, consoleOnly = false) {
+  const names = consoleOnly ? ['victory.exe'] : ['victory-play.exe', 'victory.exe'];
+  const folders = ['target\\diag', 'target\\release', ''];
+  for (const folder of folders) {
+    for (const name of names) {
+      const exe = path.join(dir, folder, name);
+      if (isFile(exe)) return exe;
+    }
+  }
+  return '';
 }
 
 function hasVictoryRoot(dir) {
@@ -687,7 +772,7 @@ function hasVictoryRoot(dir) {
   }
 }
 
-function findDexnomSource() {
+function forkCandidateDirs() {
   const candidates = [];
   const seen = new Set();
   const add = (dir) => {
@@ -699,7 +784,6 @@ function findDexnomSource() {
     candidates.push(resolved);
   };
 
-  add(cfg.dexnomSource);
   for (const root of [cfg.downloadsDir || DEFAULT_DOWNLOADS, DEFAULT_DOWNLOADS]) {
     add(root);
     try {
@@ -710,12 +794,138 @@ function findDexnomSource() {
       /* pasta de downloads ainda não existe */
     }
   }
+  add(cfg.dexnomSource);
+  for (const dir of Object.values(cfg.runtimeSources || {})) add(dir);
+  return candidates;
+}
 
-  for (const dir of candidates) {
-    const source = dexnomSetupIn(dir);
-    if (source) return source;
+function setupInstallTarget(id, source, setupScript) {
+  const chosen = cfg.forkInstalls && cfg.forkInstalls[id];
+  if (chosen) return path.resolve(chosen);
+  if (isDexnomSource(source, setupScript)) {
+    if (cfg.dexnomInstallDir) return path.resolve(cfg.dexnomInstallDir);
+    if (cfg.dexnomRuntime) return path.resolve(cfg.dexnomRuntime);
   }
-  return null;
+  const local = process.env.LOCALAPPDATA || '';
+  const name = forkDisplayName(source)
+    .replace(/[\\/:*?"<>|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return local ? path.join(local, `${name || 'VIctory'} Runtime`) : '';
+}
+
+function victoryDataDir() {
+  const local = process.env.LOCALAPPDATA || '';
+  return local ? path.join(local, 'victory', 'data') : '';
+}
+
+function victoryCacheDir() {
+  const local = process.env.LOCALAPPDATA || '';
+  return local ? path.join(local, 'victory', 'cache') : '';
+}
+
+function forkLogPath(profile) {
+  if (profile && isDexnomSource(profile.sourceDir, profile.setupScript)) return DEXNOM_SETUP_LOG;
+  if (!profile) return path.join(LOGS_DIR, 'runtime-setup.log');
+  return path.join(LOGS_DIR, `${profile.id}-setup.log`);
+}
+
+function buildForkProfile(source) {
+  const setupScript = setupScriptIn(source);
+  const playScript = playScriptIn(source);
+  const builtExe = builtVictoryExe(source);
+  let strategy = 'build';
+  if (setupScript) strategy = 'setup';
+  else if (playScript) strategy = 'script';
+  else if (builtExe) strategy = 'exe';
+
+  const id = forkId(source);
+  const installDir = strategy === 'setup' ? setupInstallTarget(id, source, setupScript) : '';
+  const dataDir = strategy === 'setup' ? path.join(installDir, 'state') : victoryDataDir();
+  const cacheDir = strategy === 'setup' ? path.join(installDir, 'cache') : victoryCacheDir();
+  const scriptBuild = isFile(path.join(source, 'target', 'diag', 'victory.exe'))
+    ? 'diag'
+    : isFile(path.join(source, 'target', 'release', 'victory.exe'))
+      ? 'release'
+      : '';
+
+  return {
+    id,
+    name: forkDisplayName(source),
+    folder: path.basename(source),
+    sourceDir: source,
+    strategy,
+    setupScript,
+    playScript,
+    builtExe,
+    scriptBuild,
+    installDir,
+    dataDir,
+    cacheDir,
+    logPath: forkLogPath({ id, sourceDir: source, setupScript }),
+  };
+}
+
+function runtimeProfiles() {
+  const profiles = [];
+  const seen = new Set();
+  for (const candidate of forkCandidateDirs()) {
+    const source = victorySourceIn(candidate);
+    if (!source) continue;
+    const key = source.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    profiles.push(buildForkProfile(source));
+  }
+  profiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  return profiles;
+}
+
+function profileRuntime(profile) {
+  if (!profile) return null;
+  if (profile.strategy === 'setup') {
+    if (!profile.installDir) return null;
+    for (const name of [DEXNOM_PLAYER, 'victory-play.exe', 'victory.exe']) {
+      const exe = path.join(profile.installDir, name);
+      if (isFile(exe)) return { dir: profile.installDir, exe, kind: 'installed' };
+    }
+    return null;
+  }
+  const exe =
+    profile.strategy === 'script'
+      ? builtVictoryExe(profile.sourceDir, true)
+      : profile.builtExe || builtVictoryExe(profile.sourceDir);
+  if (!exe) return null;
+  return {
+    dir: path.dirname(exe),
+    exe,
+    kind: profile.strategy === 'script' ? 'script' : 'exe',
+    playScript: profile.playScript || '',
+    buildProfile: profile.scriptBuild || '',
+    dataDir: profile.dataDir,
+    cacheDir: profile.cacheDir,
+  };
+}
+
+function selectedRuntimeProfile(profiles) {
+  const list = profiles || runtimeProfiles();
+  if (!list.length) return null;
+  if (cfg.runtimeFork) {
+    const chosen = list.find((profile) => profile.id === cfg.runtimeFork);
+    if (chosen) return chosen;
+  }
+  if (cfg.dexnomSource) {
+    const source = path.resolve(cfg.dexnomSource).toLowerCase();
+    const legacy = list.find((profile) => profile.sourceDir.toLowerCase() === source);
+    if (legacy) return legacy;
+  }
+  const ready = list.find((profile) => profileRuntime(profile));
+  return ready || list[0];
+}
+
+function findDexnomSource() {
+  const profile = runtimeProfiles().find((item) => isDexnomSource(item.sourceDir, item.setupScript));
+  return profile ? profile.sourceDir : null;
 }
 
 function dexnomGameExe() {
@@ -723,6 +933,8 @@ function dexnomGameExe() {
 }
 
 function dexnomInstallTarget() {
+  const profile = runtimeProfiles().find((item) => isDexnomSource(item.sourceDir, item.setupScript));
+  if (profile) return profile.installDir;
   const local = process.env.LOCALAPPDATA || '';
   const chosen = cfg.dexnomInstallDir ? path.resolve(cfg.dexnomInstallDir) : '';
   if (chosen) return chosen;
@@ -730,27 +942,7 @@ function dexnomInstallTarget() {
 }
 
 function dexnomRuntime() {
-  const local = process.env.LOCALAPPDATA || '';
-  const candidates = [];
-  const seen = new Set();
-  const add = (dir) => {
-    if (!dir) return;
-    const resolved = path.resolve(dir);
-    const key = resolved.toLowerCase();
-    if (seen.has(key)) return;
-    seen.add(key);
-    candidates.push(resolved);
-  };
-
-  add(cfg.dexnomRuntime);
-  add(dexnomInstallTarget());
-  if (local) add(path.join(local, 'DexNom Runtime'));
-
-  for (const dir of candidates) {
-    const exe = path.join(dir, DEXNOM_PLAYER);
-    if (isFile(exe)) return { dir, exe };
-  }
-  return null;
+  return profileRuntime(selectedRuntimeProfile());
 }
 
 async function checkRust() {
@@ -988,26 +1180,70 @@ function freeSpaceGB(dir) {
   }
 }
 
-async function dexnomStatus() {
-  const source = findDexnomSource();
-  const runtime = dexnomRuntime();
+async function runtimeStatus() {
+  const profiles = runtimeProfiles();
+  const selected = selectedRuntimeProfile(profiles);
+  const runtime = profileRuntime(selected);
   const gameExe = dexnomGameExe();
-  const installDir = dexnomInstallTarget();
+  const installDir = selected ? (selected.strategy === 'setup' ? selected.installDir : selected.dataDir) : '';
   const installExists = isDir(installDir);
+  const installOverride =
+    Boolean(selected) &&
+    selected.strategy === 'setup' &&
+    Boolean(
+      (cfg.forkInstalls && cfg.forkInstalls[selected.id]) ||
+        (isDexnomSource(selected.sourceDir, selected.setupScript) &&
+          (cfg.dexnomInstallDir || cfg.dexnomRuntime))
+    );
   const [rust, msvc] = await Promise.all([checkRust(), checkMsvc()]);
 
   return {
     ok: true,
     platform: process.platform,
-    source: source ? { dir: source, setup: path.join(source, DEXNOM_SETUP_FILE) } : null,
+    forks: profiles.map((profile) => {
+      const ready = profileRuntime(profile);
+      return {
+        id: profile.id,
+        name: profile.name,
+        folder: profile.folder,
+        sourceDir: profile.sourceDir,
+        strategy: profile.strategy,
+        setupScript: profile.setupScript,
+        playScript: profile.playScript,
+        builtExe: profile.builtExe,
+        installDir: profile.installDir,
+        dataDir: profile.dataDir,
+        cacheDir: profile.cacheDir,
+        logPath: profile.logPath,
+        ready: Boolean(ready),
+        runtime: ready ? { dir: ready.dir, exe: ready.exe, kind: ready.kind } : null,
+      };
+    }),
+    selectedId: selected ? selected.id : '',
+    strategy: selected ? selected.strategy : '',
+    source: selected
+      ? { dir: selected.sourceDir, setup: selected.setupScript, playScript: selected.playScript }
+      : null,
     gameExe,
     installDir,
+    installKind: selected && selected.strategy === 'setup' ? 'install' : 'data',
     installExists,
-    installDefault: !cfg.dexnomInstallDir,
-    runtime: runtime ? { dir: runtime.dir, exe: runtime.exe } : null,
+    installDefault: !installOverride,
+    runtime: runtime
+      ? {
+          dir: runtime.dir,
+          exe: runtime.exe,
+          kind: runtime.kind,
+          playScript: runtime.playScript || '',
+          dataDir: runtime.dataDir || '',
+          cacheDir: runtime.cacheDir || '',
+        }
+      : null,
     rust,
     msvc,
-    diskFreeGB: freeSpaceGB(installDir || source || cfg.downloadsDir || DEFAULT_DOWNLOADS),
+    diskFreeGB: freeSpaceGB(
+      (selected && selected.sourceDir) || installDir || cfg.downloadsDir || DEFAULT_DOWNLOADS
+    ),
     systemFreeGB: freeSpaceGB(process.env.SystemDrive ? `${process.env.SystemDrive}\\` : 'C:\\'),
     setup: dexnomSetup
       ? { running: true, startedAt: dexnomSetup.startedAt, lines: dexnomSetup.lines.slice(-600) }
@@ -1019,12 +1255,16 @@ async function dexnomStatus() {
     msvcLogPath: MSVC_INSTALL_LOG,
     msvcLogExists: fs.existsSync(MSVC_INSTALL_LOG),
     rt: Boolean(cfg.dexnomRayTracing),
-    logPath: DEXNOM_SETUP_LOG,
+    logPath: selected ? selected.logPath : path.join(LOGS_DIR, 'runtime-setup.log'),
   };
 }
 
+async function dexnomStatus() {
+  return runtimeStatus();
+}
+
 // ---------------------------------------------------------------------------
-// Saves do jogo (DexNom)
+// Saves do jogo (runtime selecionado)
 // ---------------------------------------------------------------------------
 
 const DEXNOM_TITLE_FALLBACK = '7952987A';
@@ -1044,27 +1284,34 @@ function dexnomTitleId() {
 }
 
 function dexnomSavesPaths() {
-  const installDir = dexnomInstallTarget();
+  const profile = selectedRuntimeProfile();
+  const dataDir = profile
+    ? profile.dataDir
+    : dexnomInstallTarget()
+      ? path.join(dexnomInstallTarget(), 'state')
+      : '';
   const titleId = dexnomTitleId();
-  const titleDir = path.join(installDir, 'state', titleId);
-  const savesDir = path.join(titleDir, 'saves');
-  const backupsDir = path.join(titleDir, 'saves-backups');
+  const titleDir = dataDir ? path.join(dataDir, titleId) : '';
+  const savesDir = titleDir ? path.join(titleDir, 'saves') : '';
+  const backupsDir = titleDir ? path.join(titleDir, 'saves-backups') : '';
   const xuid = savesStore.detectXuid(savesDir);
   return {
-    installDir,
+    installDir: dataDir,
+    dataDir,
     titleId,
     titleDir,
     savesDir,
     backupsDir,
     xuid,
-    userDir: path.join(savesDir, xuid),
+    userDir: savesDir ? path.join(savesDir, xuid) : '',
   };
 }
 
 async function dexnomGameActive() {
   if (dexnomGame) return true;
-  const runtime = dexnomRuntime();
-  if (!runtime) return false;
+  const profile = selectedRuntimeProfile();
+  const runtime = profileRuntime(profile);
+  if (!profile || !runtime) return false;
   const script =
     "Get-Process -Name victory,victory-play -ErrorAction SilentlyContinue | ForEach-Object { $_.Path }";
   const result = await execText(
@@ -1077,13 +1324,17 @@ async function dexnomGameActive() {
     runtime.exe.toLowerCase(),
     path.join(runtime.dir, DEXNOM_PLAYER).toLowerCase(),
   ]);
+  const roots = [profile.sourceDir, runtime.dir]
+    .filter(Boolean)
+    .map((dir) => path.resolve(dir).toLowerCase() + path.sep);
   return result.stdout
     .split(/\r?\n/)
     .map((line) => line.trim().toLowerCase())
-    .some((line) => targets.has(line));
+    .some((line) => targets.has(line) || roots.some((root) => line.startsWith(root)));
 }
 
 async function savesStatus() {
+  const profile = selectedRuntimeProfile();
   const paths = dexnomSavesPaths();
   const runtime = dexnomRuntime();
   const gameRunning = await dexnomGameActive();
@@ -1105,6 +1356,7 @@ async function savesStatus() {
     backupsDir: paths.backupsDir,
     xuid: paths.xuid,
     exists: isDir(paths.savesDir),
+    fork: profile ? { id: profile.id, name: profile.name, strategy: profile.strategy } : null,
     runtime: runtime ? { dir: runtime.dir, exe: runtime.exe } : null,
     gameExe: dexnomGameExe(),
     gameRunning,
@@ -1120,9 +1372,9 @@ async function savesStatus() {
   };
 }
 
-function appendSetupLog(line) {
+function appendSetupLog(line, logPath = DEXNOM_SETUP_LOG) {
   try {
-    fs.appendFileSync(DEXNOM_SETUP_LOG, line + '\r\n', 'utf8');
+    fs.appendFileSync(logPath, line + '\r\n', 'utf8');
   } catch {
     /* log é opcional */
   }
@@ -1277,54 +1529,50 @@ async function vcvarsEnvironment(vcvars) {
   return Object.keys(env).length ? env : null;
 }
 
-async function startDexnomSetup(source, gameExe, installDir, msvc) {
+async function runtimeBuildEnv(msvc, logPath) {
+  if (!msvc || !msvc.vcvars) {
+    if (msvc) appendSetupLog('AVISO: vcvars64.bat nao encontrado; usando o PATH atual.', logPath);
+    return { ...process.env };
+  }
+  const extra = await vcvarsEnvironment(msvc.vcvars);
+  if (!extra) {
+    appendSetupLog('AVISO: nao foi possivel carregar o ambiente do Build Tools.', logPath);
+    return { ...process.env };
+  }
+  return mergeEnv(process.env, extra);
+}
+
+function writeRuntimeLog(logPath, title, details) {
   ensureDirs();
-  const setup = path.join(source, DEXNOM_SETUP_FILE);
   try {
     fs.writeFileSync(
-      DEXNOM_SETUP_LOG,
-      `PortWatch Hub - preparacao do DexNom\r\n${new Date().toISOString()}\r\n` +
-        `fonte: ${source}\r\njogo: ${gameExe}\r\ninstalacao: ${installDir}\r\n\r\n`,
+      logPath,
+      `PortWatch Hub - ${title}\r\n${new Date().toISOString()}\r\n${details.join('\r\n')}\r\n\r\n`,
       'utf8'
     );
   } catch {
     /* segue sem arquivo de log */
   }
+}
 
-  const args = [
-    '-NoLogo',
-    '-NoProfile',
-    '-STA',
-    '-ExecutionPolicy',
-    'Bypass',
-    '-File',
-    setup,
-    '-GamePath',
-    gameExe,
-    '-InstallDir',
-    installDir,
-  ];
-  let env = { ...process.env };
-  if (msvc && msvc.vcvars) {
-    const extra = await vcvarsEnvironment(msvc.vcvars);
-    if (extra) {
-      env = mergeEnv(process.env, extra);
-    } else {
-      appendSetupLog('AVISO: nao foi possivel carregar o ambiente do Build Tools.');
-    }
-  } else if (msvc) {
-    appendSetupLog('AVISO: vcvars64.bat nao encontrado; usando o PATH atual.');
-  }
-
-  const child = spawn('powershell.exe', args, {
-    cwd: source,
+function startRuntimeProcess(profile, command, args, options) {
+  const run = {
+    child: null,
+    canceled: false,
+    startedAt: Date.now(),
+    lines: [],
+    logPath: profile.logPath,
+    profileId: profile.id,
+    phase: options.phase,
+  };
+  const child = spawn(command, args, {
+    cwd: options.cwd,
     windowsHide: true,
-    env,
+    env: options.env,
   });
-
-  const run = { child, canceled: false, startedAt: Date.now(), lines: [] };
+  run.child = child;
   dexnomSetup = run;
-  sendSetup({ type: 'start', at: run.startedAt });
+  sendSetup({ type: 'start', at: run.startedAt, fork: profile.id, phase: options.phase });
 
   let buffer = '';
   const onChunk = (stream) => (chunk) => {
@@ -1332,12 +1580,15 @@ async function startDexnomSetup(source, gameExe, installDir, msvc) {
     const parts = buffer.split('\n');
     buffer = parts.pop();
     for (const raw of parts) {
-      const line = raw.replace(/\u0000/g, '').trimEnd();
+      const line = raw
+        .replace(/\u001b\[[0-9;]*m/g, '')
+        .replace(/\u0000/g, '')
+        .trimEnd();
       if (!line) continue;
       run.lines.push(line);
       if (run.lines.length > 400) run.lines.shift();
-      appendSetupLog(line);
-      sendSetup({ type: 'line', stream, line });
+      appendSetupLog(line, run.logPath);
+      sendSetup({ type: 'line', stream, line, fork: profile.id });
     }
   };
 
@@ -1346,28 +1597,34 @@ async function startDexnomSetup(source, gameExe, installDir, msvc) {
 
   child.on('error', (err) => {
     const line = String(err && err.message ? err.message : err);
-    appendSetupLog(line);
-    sendSetup({ type: 'line', stream: 'stderr', line });
+    appendSetupLog(line, run.logPath);
+    sendSetup({ type: 'line', stream: 'stderr', line, fork: profile.id });
   });
 
   child.on('close', (code) => {
     if (buffer.trim()) {
       const line = buffer.trim();
       run.lines.push(line);
-      appendSetupLog(line);
-      sendSetup({ type: 'line', stream: 'stdout', line });
+      appendSetupLog(line, run.logPath);
+      sendSetup({ type: 'line', stream: 'stdout', line, fork: profile.id });
     }
     if (dexnomSetup === run) dexnomSetup = null;
 
     if (run.canceled) {
-      sendSetup({ type: 'done', canceled: true, code });
+      sendSetup({ type: 'done', canceled: true, code, fork: profile.id });
       return;
     }
 
-    const runtime = dexnomRuntime();
+    const fresh = runtimeProfiles().find((item) => item.id === profile.id) || profile;
+    const runtime = profileRuntime(fresh);
     if (code === 0 && runtime) {
-      saveConfig({ dexnomRuntime: runtime.dir });
-      sendSetup({ type: 'done', ok: true, code, runtime });
+      const patch = { runtimeFork: fresh.id };
+      if (fresh.strategy === 'setup') {
+        patch.forkInstalls = { ...(cfg.forkInstalls || {}), [fresh.id]: fresh.installDir };
+        if (isDexnomSource(fresh.sourceDir, fresh.setupScript)) patch.dexnomRuntime = runtime.dir;
+      }
+      saveConfig(patch);
+      sendSetup({ type: 'done', ok: true, code, runtime, fork: fresh.id });
       return;
     }
 
@@ -1375,9 +1632,65 @@ async function startDexnomSetup(source, gameExe, installDir, msvc) {
       type: 'error',
       code: code === 0 ? 'missing' : 'build',
       exitCode: code,
+      fork: fresh.id,
       tail: run.lines.slice(-14).join('\n'),
     });
   });
+
+  return run;
+}
+
+async function startSetupRuntime(profile, gameExe, msvc) {
+  writeRuntimeLog(profile.logPath, `preparacao de ${profile.name}`, [
+    `fonte: ${profile.sourceDir}`,
+    `jogo: ${gameExe}`,
+    `instalacao: ${profile.installDir}`,
+    `script: ${profile.setupScript}`,
+  ]);
+  const env = await runtimeBuildEnv(msvc, profile.logPath);
+  const args = [
+    '-NoLogo',
+    '-NoProfile',
+    '-STA',
+    '-ExecutionPolicy',
+    'Bypass',
+    '-File',
+    profile.setupScript,
+    '-GamePath',
+    gameExe,
+    '-InstallDir',
+    profile.installDir,
+  ];
+  startRuntimeProcess(profile, 'powershell.exe', args, {
+    cwd: profile.sourceDir,
+    env,
+    phase: 'setup',
+  });
+}
+
+async function startBuildRuntime(profile, msvc) {
+  writeRuntimeLog(profile.logPath, `compilacao de ${profile.name}`, [
+    `fonte: ${profile.sourceDir}`,
+    `estrategia: ${profile.strategy}`,
+    `script: ${profile.playScript || '(executavel direto)'}`,
+  ]);
+  const env = await runtimeBuildEnv(msvc, profile.logPath);
+  const args = ['build', '--locked', '--profile', 'diag', '-p', 'victory', '--features', 'diagnostics'];
+  startRuntimeProcess(profile, 'cargo', args, {
+    cwd: profile.sourceDir,
+    env,
+    phase: 'build',
+  });
+}
+
+async function startRuntimeSetup(profile, gameExe, msvc) {
+  if (!profile) throw new Error('fork ausente');
+  if (profile.strategy === 'setup') return startSetupRuntime(profile, gameExe, msvc);
+  if (profile.strategy === 'script' || profile.strategy === 'build') return startBuildRuntime(profile, msvc);
+  saveConfig({ runtimeFork: profile.id });
+  sendSetup({ type: 'start', at: Date.now(), fork: profile.id, phase: 'exe' });
+  sendSetup({ type: 'done', ok: true, code: 0, runtime: profileRuntime(profile), fork: profile.id });
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1501,10 +1814,18 @@ ipcMain.handle('download:choose-dir', async () => {
 });
 
 // ---------------------------------------------------------------------------
-// DexNom Runtime
+// Runtime / forks
 // ---------------------------------------------------------------------------
 
 ipcMain.handle('dexnom:status', () => dexnomStatus());
+ipcMain.handle('runtime:status', () => runtimeStatus());
+
+ipcMain.handle('runtime:select', async (_event, id) => {
+  const profile = runtimeProfiles().find((item) => item.id === String(id || ''));
+  if (!profile) return { ok: false, error: 'source', status: await runtimeStatus() };
+  saveConfig({ runtimeFork: profile.id });
+  return { ok: true, status: await runtimeStatus() };
+});
 
 ipcMain.handle('dexnom:choose-game', async () => {
   const result = await dialog.showOpenDialog(win, {
@@ -1525,35 +1846,58 @@ ipcMain.handle('dexnom:choose-game', async () => {
 });
 
 ipcMain.handle('dexnom:choose-source', async () => {
+  const selected = selectedRuntimeProfile();
   const result = await dialog.showOpenDialog(win, {
     title: mt('chooseForkFolder'),
     properties: ['openDirectory'],
-    defaultPath: cfg.dexnomSource ? path.dirname(cfg.dexnomSource) : cfg.downloadsDir || DEFAULT_DOWNLOADS,
+    defaultPath: selected
+      ? path.dirname(selected.sourceDir)
+      : cfg.dexnomSource
+        ? path.dirname(cfg.dexnomSource)
+        : cfg.downloadsDir || DEFAULT_DOWNLOADS,
   });
   if (result.canceled || !result.filePaths.length) {
-    return { ok: false, canceled: true, status: await dexnomStatus() };
+    return { ok: false, canceled: true, status: await runtimeStatus() };
   }
-  const source = dexnomSetupIn(result.filePaths[0]);
-  if (!source) return { ok: false, error: 'source', status: await dexnomStatus() };
-  saveConfig({ dexnomSource: source });
-  return { ok: true, status: await dexnomStatus() };
+  const source = victorySourceIn(result.filePaths[0]);
+  if (!source) return { ok: false, error: 'source', status: await runtimeStatus() };
+  const profile = buildForkProfile(source);
+  const patch = {
+    runtimeFork: profile.id,
+    runtimeSources: { ...(cfg.runtimeSources || {}), [profile.id]: source },
+  };
+  if (isDexnomSource(source, profile.setupScript)) patch.dexnomSource = source;
+  saveConfig(patch);
+  return { ok: true, status: await runtimeStatus() };
 });
 
 ipcMain.handle('dexnom:choose-install', async () => {
+  const profile = selectedRuntimeProfile();
+  if (!profile) return { ok: false, error: 'source', status: await runtimeStatus() };
+  if (profile.strategy !== 'setup') {
+    return { ok: false, error: 'install', status: await runtimeStatus() };
+  }
   const result = await dialog.showOpenDialog(win, {
     title: mt('chooseInstallDir'),
     properties: ['openDirectory', 'createDirectory'],
-    defaultPath: dexnomInstallTarget() || cfg.downloadsDir || DEFAULT_DOWNLOADS,
+    defaultPath: profile.installDir || cfg.downloadsDir || DEFAULT_DOWNLOADS,
   });
   if (result.canceled || !result.filePaths.length) {
-    return { ok: false, canceled: true, status: await dexnomStatus() };
+    return { ok: false, canceled: true, status: await runtimeStatus() };
   }
   const chosen = result.filePaths[0];
   if (hasVictoryRoot(chosen)) {
-    return { ok: false, error: 'install', status: await dexnomStatus() };
+    return { ok: false, error: 'install', status: await runtimeStatus() };
   }
-  saveConfig({ dexnomInstallDir: chosen, dexnomRuntime: '' });
-  return { ok: true, status: await dexnomStatus() };
+  const patch = {
+    forkInstalls: { ...(cfg.forkInstalls || {}), [profile.id]: chosen },
+  };
+  if (isDexnomSource(profile.sourceDir, profile.setupScript)) {
+    patch.dexnomInstallDir = chosen;
+    patch.dexnomRuntime = '';
+  }
+  saveConfig(patch);
+  return { ok: true, status: await runtimeStatus() };
 });
 
 ipcMain.handle('dexnom:choose-msvc', async () => {
@@ -1588,18 +1932,26 @@ ipcMain.handle('dexnom:install-msvc', () => {
 ipcMain.handle('dexnom:prepare', async () => {
   if (dexnomSetup) return { ok: false, error: 'busy' };
   const status = await dexnomStatus();
-  if (!status.source) return { ok: false, error: 'source' };
+  const profile = selectedRuntimeProfile();
+  if (!profile || !status.source) return { ok: false, error: 'source' };
   if (!status.gameExe) return { ok: false, error: 'game' };
-  if (!status.installDir) return { ok: false, error: 'install' };
-  if (hasVictoryRoot(status.installDir)) return { ok: false, error: 'install' };
-  if (!status.rust.ok) return { ok: false, error: 'rust' };
-  if (!status.msvc.ok || !status.msvc.sdk) return { ok: false, error: 'msvc' };
-  if (status.diskFreeGB != null && status.diskFreeGB < 5) {
-    return { ok: false, error: 'disk', freeGB: status.diskFreeGB };
+  if (profile.strategy === 'setup') {
+    if (!profile.installDir) return { ok: false, error: 'install' };
+    if (hasVictoryRoot(profile.installDir)) return { ok: false, error: 'install' };
+  }
+  if (profile.strategy !== 'exe') {
+    if (!status.rust.ok) return { ok: false, error: 'rust' };
+    if (!status.msvc.ok || !status.msvc.sdk) return { ok: false, error: 'msvc' };
+  }
+  const free = freeSpaceGB(
+    profile.strategy === 'setup' ? profile.installDir || profile.sourceDir : profile.sourceDir
+  );
+  if (free != null && free < 5) {
+    return { ok: false, error: 'disk', freeGB: free };
   }
   try {
-    await startDexnomSetup(status.source.dir, status.gameExe, status.installDir, status.msvc);
-    return { ok: true, started: true };
+    const started = await startRuntimeSetup(profile, status.gameExe, status.msvc);
+    return { ok: true, started: Boolean(started) };
   } catch (err) {
     return { ok: false, error: 'spawn', detail: String(err.message || err) };
   }
@@ -1615,45 +1967,115 @@ ipcMain.handle('dexnom:cancel', () => {
 ipcMain.handle('dexnom:launch', async () => {
   if (dexnomGame) return { ok: false, error: 'running' };
   if (savesBusy) return { ok: false, error: 'saves' };
-  const runtime = dexnomRuntime();
+  const profile = selectedRuntimeProfile();
+  if (!profile) return { ok: false, error: 'source' };
+  const runtime = profileRuntime(profile);
   if (!runtime) return { ok: false, error: 'runtime' };
   const gameExe = dexnomGameExe();
   if (!gameExe) return { ok: false, error: 'game' };
+  const rt = Boolean(cfg.dexnomRayTracing);
 
-  // Mantém o jogo escolhido no launcher sincronizado com o runtime.
-  try {
-    fs.writeFileSync(path.join(runtime.dir, 'game-path.txt'), gameExe, 'utf8');
-  } catch {
-    /* o runtime ainda pode usar o caminho gravado pelo setup */
-  }
-
-  const args = cfg.dexnomRayTracing ? ['--rt'] : [];
   let child;
   try {
-    child = spawn(runtime.exe, args, {
-      cwd: runtime.dir,
-      windowsHide: false,
-      env: { ...process.env },
-    });
+    if (profile.strategy === 'setup') {
+      const isPlay = /victory-play\.exe$/i.test(runtime.exe);
+      if (isPlay) {
+        // Mantém o jogo escolhido no launcher sincronizado com o runtime.
+        try {
+          fs.writeFileSync(path.join(runtime.dir, 'game-path.txt'), gameExe, 'utf8');
+        } catch {
+          /* o runtime ainda pode usar o caminho gravado pelo setup */
+        }
+      }
+      const env = { ...process.env };
+      let args;
+      if (isPlay) {
+        args = rt ? ['--rt', gameExe] : [gameExe];
+      } else {
+        args = ['run', gameExe, '--execute', '--console', 'series-x', '--unimplemented', 'trap'];
+        env.VICTORY_DATA_DIR = path.join(runtime.dir, 'state');
+        env.VICTORY_CACHE_DIR = path.join(runtime.dir, 'cache');
+        env.VICTORY_GAME_DIR = path.dirname(gameExe);
+        if (rt) {
+          env.VICTORY_BVH_BUILDER = '1';
+          env.VICTORY_BVH_QUARANTINE = '0';
+          env.VICTORY_ACTIVATE_RAYS = '1';
+          env.VICTORY_RT_RESOLVE = '1';
+        }
+      }
+      child = spawn(runtime.exe, args, {
+        cwd: runtime.dir,
+        windowsHide: false,
+        env,
+      });
+    } else if (profile.strategy === 'script') {
+      const args = [
+        '-NoLogo',
+        '-NoProfile',
+        '-STA',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        runtime.playScript || profile.playScript,
+        '-Exe',
+        gameExe,
+      ];
+      if (runtime.buildProfile === 'release') args.push('-Build', 'release');
+      if (rt) args.push('-RayTracing');
+      child = spawn('powershell.exe', args, {
+        cwd: profile.sourceDir,
+        windowsHide: true,
+        env: {
+          ...process.env,
+          VICTORY_DATA_DIR: runtime.dataDir || profile.dataDir,
+          VICTORY_CACHE_DIR: runtime.cacheDir || profile.cacheDir,
+          VICTORY_GAME_DIR: path.dirname(gameExe),
+        },
+      });
+    } else {
+      const env = {
+        ...process.env,
+        VICTORY_DATA_DIR: runtime.dataDir || profile.dataDir,
+        VICTORY_CACHE_DIR: runtime.cacheDir || profile.cacheDir,
+        VICTORY_GAME_DIR: path.dirname(gameExe),
+      };
+      if (rt) {
+        env.VICTORY_BVH_BUILDER = '1';
+        env.VICTORY_BVH_QUARANTINE = '0';
+        env.VICTORY_ACTIVATE_RAYS = '1';
+        env.VICTORY_RT_RESOLVE = '1';
+      }
+      const isPlay = /victory-play\.exe$/i.test(runtime.exe);
+      const args = isPlay
+        ? rt
+          ? ['--rt', gameExe]
+          : [gameExe]
+        : ['run', gameExe, '--execute', '--console', 'series-x', '--unimplemented', 'trap'];
+      child = spawn(runtime.exe, args, {
+        cwd: runtime.dir,
+        windowsHide: false,
+        env,
+      });
+    }
   } catch (err) {
     return { ok: false, error: 'spawn', detail: String(err.message || err) };
   }
 
-  const run = { child, pid: child.pid, startedAt: Date.now() };
+  const run = { child, pid: child.pid, startedAt: Date.now(), fork: profile.id };
   dexnomGame = run;
-  sendGame({ running: true, pid: run.pid, startedAt: run.startedAt });
+  sendGame({ running: true, pid: run.pid, startedAt: run.startedAt, fork: profile.id });
 
   child.on('error', (err) => {
     if (dexnomGame === run) dexnomGame = null;
-    sendGame({ running: false, error: String(err.message || err) });
+    sendGame({ running: false, error: String(err.message || err), fork: profile.id });
   });
 
   child.on('close', (code) => {
     if (dexnomGame === run) dexnomGame = null;
-    sendGame({ running: false, code });
+    sendGame({ running: false, code, fork: profile.id });
   });
 
-  return { ok: true, pid: run.pid };
+  return { ok: true, pid: run.pid, fork: profile.id };
 });
 
 ipcMain.handle('dexnom:stop', () => {
@@ -1665,9 +2087,11 @@ ipcMain.handle('dexnom:stop', () => {
 
 ipcMain.handle('dexnom:open', async (_event, kind) => {
   try {
+    const profile = selectedRuntimeProfile();
     if (kind === 'log') {
-      if (!fs.existsSync(DEXNOM_SETUP_LOG)) return { ok: false, missing: true };
-      shell.showItemInFolder(DEXNOM_SETUP_LOG);
+      const logPath = profile ? profile.logPath : path.join(LOGS_DIR, 'runtime-setup.log');
+      if (!fs.existsSync(logPath)) return { ok: false, missing: true };
+      shell.showItemInFolder(logPath);
       return { ok: true };
     }
     if (kind === 'msvc-log') {
@@ -1675,7 +2099,14 @@ ipcMain.handle('dexnom:open', async (_event, kind) => {
       shell.showItemInFolder(MSVC_INSTALL_LOG);
       return { ok: true };
     }
-    const target = kind === 'source' ? findDexnomSource() : kind === 'runtime' ? dexnomRuntime()?.dir : '';
+    const target =
+      kind === 'source'
+        ? profile?.sourceDir
+        : kind === 'runtime'
+          ? profileRuntime(profile)?.dir
+          : kind === 'data'
+            ? profile?.dataDir
+            : '';
     if (!target) return { ok: false, missing: true };
     if (!fs.existsSync(target)) return { ok: false, missing: true };
     const error = await shell.openPath(target);

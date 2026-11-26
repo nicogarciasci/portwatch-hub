@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('portwatch', {
   downloads: () => ipcRenderer.invoke('download:list'),
   openDownload: (name) => ipcRenderer.invoke('download:open', name),
   chooseDownloadsDir: () => ipcRenderer.invoke('download:choose-dir'),
+  runtimeStatus: () => ipcRenderer.invoke('runtime:status'),
+  runtimeSelect: (id) => ipcRenderer.invoke('runtime:select', id),
   dexnomStatus: () => ipcRenderer.invoke('dexnom:status'),
   dexnomChooseGame: () => ipcRenderer.invoke('dexnom:choose-game'),
   dexnomChooseSource: () => ipcRenderer.invoke('dexnom:choose-source'),

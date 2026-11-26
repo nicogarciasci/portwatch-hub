@@ -22,6 +22,9 @@ const DEFAULTS = {
   startFullscreen: false,
   reduceMotion: false,
   gameExe: '',
+  runtimeFork: '',
+  runtimeSources: {},
+  forkInstalls: {},
   dexnomSource: '',
   dexnomRuntime: '',
   dexnomInstallDir: '',
@@ -41,7 +44,7 @@ const VIEW_META = {
 const state = {
   config: { ...DEFAULTS },
   defaults: { ...DEFAULTS },
-  appVersion: '2.4.0',
+  appVersion: '2.5.0',
   site: SITE_URL,
   trackerRepo: TRACKER_GITHUB,
   tracker: null,
@@ -942,6 +945,13 @@ function matchesQuery(item, query) {
   return `${item.label} ${item.repo} ${item.owner}`.toLowerCase().includes(query);
 }
 
+function runtimeForkForFolder(folder) {
+  const status = state.dexnom.status;
+  const forks = (status && status.forks) || [];
+  const target = String(folder || '').toLowerCase();
+  return forks.find((fork) => String(fork.folder || '').toLowerCase() === target) || null;
+}
+
 function downloadRow(item) {
   const progress = state.downloading.get(item.repo);
   const done = isDownloaded(item.folder);
@@ -952,10 +962,10 @@ function downloadRow(item) {
     const label = progress.phase === 'extract' ? t('dl.extract') : `${t('dl.downloading')} ${percent}%`;
     action = `<button class="mini-btn dl-action" type="button" disabled>${esc(label)}</button>`;
   } else if (done) {
-    const play =
-      item.repo === 'DexNom/VIctory'
-        ? `<button class="mini-btn dl-action is-play" type="button" data-play-dexnom="1"><svg class="ic"><use href="#i-gamepad"></use></svg>${esc(t('play.play'))}</button>`
-        : '';
+    const fork = runtimeForkForFolder(item.folder);
+    const play = fork
+      ? `<button class="mini-btn dl-action is-play" type="button" data-play-fork="${esc(fork.id)}"><svg class="ic"><use href="#i-gamepad"></use></svg>${esc(t('play.play'))}</button>`
+      : '';
     action = `<div class="dl-row-actions">${play}<button class="mini-btn dl-action is-done" type="button" data-open-folder="${esc(item.folder)}">${esc(t('dl.openFolder'))}</button></div>`;
   } else {
     action = `<button class="mini-btn dl-action" type="button" data-dl-repo="${esc(item.repo)}" data-dl-branch="${esc(item.branch)}" data-dl-name="${esc(item.folder)}" data-dl-label="${esc(item.label)}">${esc(t('dl.download'))}</button>`;
@@ -1080,6 +1090,7 @@ function handleDownloadProgress(payload) {
     state.downloading.delete(payload.repo);
     renderDownloads();
     renderRace();
+    if (payload.phase === 'done') loadDexnomStatus();
     return;
   }
   state.downloading.set(payload.repo, payload);
@@ -1178,6 +1189,7 @@ async function chooseDownloadsDir() {
     if (draft) draft.downloadsDir = result.dir;
     applyStateToUI();
     renderDownloads();
+    loadDexnomStatus();
   }
 }
 
@@ -1188,8 +1200,9 @@ function openExternal(url) {
 }
 
 function onListClick(event) {
-  const playBtn = event.target.closest('[data-play-dexnom]');
+  const playBtn = event.target.closest('[data-play-fork]');
   if (playBtn) {
+    selectRuntimeFork(playBtn.dataset.playFork);
     openView('play');
     return;
   }
@@ -1221,7 +1234,7 @@ function onListClick(event) {
 }
 
 /* =========================================================================
-   JOGAR — DEXNOM RUNTIME
+   JOGAR - RUNTIMES
    ========================================================================= */
 
 const DEXNOM_RUST_URL = 'https://rustup.rs/';
@@ -1281,6 +1294,7 @@ async function loadDexnomStatus() {
       }
     }
     if (status.gameExe) state.config.gameExe = status.gameExe;
+    if (status.selectedId) state.config.runtimeFork = status.selectedId;
     if (status.runtime) state.config.dexnomRuntime = status.runtime.dir;
     if (status.source) state.config.dexnomSource = status.source.dir;
     if (status.installDir) state.config.dexnomInstallDir = status.installDefault ? '' : status.installDir;
@@ -1289,11 +1303,42 @@ async function loadDexnomStatus() {
   } finally {
     state.dexnom.loading = false;
     renderPlay();
+    if (activeView === 'downloads') renderDownloads();
   }
+}
+
+async function selectRuntimeFork(id) {
+  if (!IS_DESKTOP || !id) return;
+  const previous = state.config.runtimeFork;
+  try {
+    const result = await window.portwatch.runtimeSelect(id);
+    if (result && result.status) state.dexnom.status = result.status;
+    if (result && result.ok) {
+      if (result.status && result.status.selectedId) state.config.runtimeFork = result.status.selectedId;
+      if (result.status && result.status.selectedId !== previous) {
+        state.dexnom.log = [];
+        renderDexnomLog();
+      }
+    } else if (result && !result.canceled) {
+      toast(t('play.sourceInvalid'), 'warn');
+    }
+    renderPlay();
+    if (activeView === 'saves') loadSavesStatus();
+  } catch {
+    toast(t('play.sourceInvalid'), 'warn');
+  }
+}
+
+function selectedPlayFork(status) {
+  const forks = (status && status.forks) || [];
+  return forks.find((fork) => fork.id === status.selectedId) || null;
 }
 
 function renderPlay() {
   const status = state.dexnom.status;
+  const forks = (status && status.forks) || [];
+  const fork = selectedPlayFork(status);
+  const strategy = fork ? fork.strategy : '';
   const setupRunning = state.dexnom.settingUp || Boolean(status && status.setup && status.setup.running);
   const running = Boolean(status && status.game && status.game.running);
   const source = status && status.source;
@@ -1303,23 +1348,62 @@ function renderPlay() {
   const runtime = status && status.runtime;
   const rustOk = Boolean(rust && rust.ok);
   const msvcOk = Boolean(msvc && msvc.ok && msvc.sdk);
+  const needsBuild = strategy === 'setup' || strategy === 'script' || strategy === 'build';
   const msvcInstalling =
     state.dexnom.msvcInstalling || Boolean(status && status.msvcInstall && status.msvcInstall.running);
 
-  dexnomCheck('playCheckSource', source ? 'ok' : 'bad', source ? source.dir : t('play.sourceMissing'));
+  const select = $('#playForkSelect');
+  if (select) {
+    if (!forks.length) {
+      select.innerHTML = `<option value="">${esc(t('play.noForks'))}</option>`;
+      select.disabled = true;
+    } else {
+      select.innerHTML = forks
+        .map((item) => {
+          const suffix = item.ready ? '' : ` · ${t('play.notPrepared')}`;
+          const selected = item.id === status.selectedId ? ' selected' : '';
+          return `<option value="${esc(item.id)}"${selected}>${esc(item.name + suffix)}</option>`;
+        })
+        .join('');
+      select.disabled = state.dexnom.loading || setupRunning;
+    }
+  }
+
+  const heroName = $('#playHeroName');
+  if (heroName) heroName.textContent = fork ? fork.name : t('play.noForkTitle');
+  const heroDesc = $('#playHeroDesc');
+  if (heroDesc) {
+    heroDesc.textContent = fork ? t(`play.strategyDesc.${strategy}`) : t('play.descEmpty');
+  }
+  const tags = $('#playHeroTags');
+  if (tags) {
+    const list = [];
+    if (fork) list.push(t(`play.strategy.${strategy}`));
+    if (fork) list.push(fork.ready ? t('play.prepared') : t('play.notPrepared'));
+    list.push(t('play.tagRt'));
+    tags.innerHTML = list.map((label) => `<span class="play-tag">${esc(label)}</span>`).join('');
+  }
+
+  dexnomCheck('playCheckSource', fork ? 'ok' : 'bad', fork ? fork.sourceDir : t('play.sourceMissing'));
   dexnomCheck('playCheckGame', gameExe ? 'ok' : 'bad', gameExe || t('play.gameMissing'));
+
+  const installLabel = $('#playInstallLabel');
+  if (installLabel) installLabel.textContent = strategy === 'setup' ? t('play.installDir') : t('play.dataDir');
   const installDir = status && status.installDir;
   const installText = installDir
-    ? `${status.installDefault ? `${t('play.defaultFolder')} · ` : ''}${installDir}`
+    ? `${status.installDefault && strategy === 'setup' ? `${t('play.defaultFolder')} · ` : ''}${installDir}`
     : t('play.installMissing');
   dexnomCheck(
     'playCheckInstall',
-    installDir ? (status.installExists ? 'ok' : 'warn') : 'bad',
-    installText
+    fork ? (strategy === 'setup' && !status.installExists ? 'warn' : 'ok') : 'bad',
+    fork ? installText : t('play.installMissing')
   );
+  const chooseInstall = $('#playChooseInstall');
+  if (chooseInstall) chooseInstall.hidden = strategy !== 'setup';
+
   dexnomCheck(
     'playCheckRust',
-    rustOk ? 'ok' : 'warn',
+    rustOk ? 'ok' : needsBuild ? 'warn' : 'ok',
     rustOk ? rust.version || t('play.detected') : t('play.rustMissing')
   );
   const msvcText = msvcOk
@@ -1329,17 +1413,17 @@ function renderPlay() {
     : msvc && msvc.ok && !msvc.sdk
       ? t('play.msvcNoSdk')
       : t('play.msvcMissing');
-  dexnomCheck('playCheckMsvc', msvcOk ? 'ok' : 'warn', msvcText);
+  dexnomCheck('playCheckMsvc', msvcOk ? 'ok' : needsBuild ? 'warn' : 'ok', msvcText);
   dexnomCheck(
     'playCheckRuntime',
     runtime ? 'ok' : 'warn',
-    runtime ? runtime.dir : t('play.runtimeMissing')
+    runtime ? runtime.exe : t('play.runtimeMissing')
   );
 
   const prereq = $('#playPrereq');
   if (prereq) {
-    const missingRust = Boolean(status) && !rustOk;
-    const missingMsvc = Boolean(status) && !msvcOk;
+    const missingRust = Boolean(status) && needsBuild && !rustOk;
+    const missingMsvc = Boolean(status) && needsBuild && !msvcOk;
     prereq.hidden = !missingRust && !missingMsvc;
     const text = $('#playPrereqText');
     if (text) {
@@ -1399,9 +1483,20 @@ function renderPlay() {
         : t('play.notReady');
   }
 
-  const canPrepare = Boolean(status && source && gameExe && rustOk && msvcOk) && !setupRunning && !msvcInstalling;
+  const canPrepare =
+    Boolean(status && fork && source && gameExe) &&
+    (strategy === 'exe' ? false : rustOk && msvcOk) &&
+    !setupRunning &&
+    !msvcInstalling &&
+    (strategy !== 'setup' || Boolean(status.installDir));
   const prepare = $('#playPrepare');
-  if (prepare) prepare.disabled = !canPrepare;
+  if (prepare) {
+    prepare.disabled = !canPrepare;
+    const span = prepare.querySelector('span');
+    if (span) {
+      span.textContent = strategy === 'script' || strategy === 'build' ? t('play.build') : t('play.prepare');
+    }
+  }
   const cancel = $('#playCancelSetup');
   if (cancel) cancel.hidden = !setupRunning;
 
@@ -1426,12 +1521,16 @@ function renderPlay() {
     note.textContent = running
       ? t('play.gameRunningNote')
       : runtime && gameExe
-        ? t('play.gameReadyNote')
-        : t('play.gameNote');
+        ? t('play.gameReadyNote', { fork: fork ? fork.name : '' })
+        : fork
+          ? t('play.gameNoteFork', { fork: fork.name })
+          : t('play.gameNote');
   }
 
   const rt = $('#playRt');
   if (rt) rt.checked = Boolean(state.config.dexnomRayTracing);
+  const rtLabel = $('#playRtLabel');
+  if (rtLabel) rtLabel.textContent = strategy === 'script' ? t('play.rtScript') : t('play.rt');
   const openRuntime = $('#playOpenRuntime');
   if (openRuntime) openRuntime.disabled = !runtime;
   const openSource = $('#playOpenSource');
@@ -1444,11 +1543,15 @@ async function chooseDexnomSource() {
   if (result && result.status) state.dexnom.status = result.status;
   if (result && result.ok) {
     if (result.status && result.status.source) state.config.dexnomSource = result.status.source.dir;
+    if (result.status && result.status.selectedId) state.config.runtimeFork = result.status.selectedId;
+    state.dexnom.log = [];
+    renderDexnomLog();
     toast(t('play.sourceSaved'), 'ok');
   } else if (result && !result.canceled) {
     toast(t('play.sourceInvalid'), 'warn');
   }
   renderPlay();
+  renderDownloads();
 }
 
 async function chooseDexnomGame() {
@@ -1598,6 +1701,7 @@ async function toggleDexnomGame() {
       const code = result && result.error;
       if (code === 'runtime') toast(t('play.needPrepare'), 'warn');
       else if (code === 'game') toast(t('play.needGame'), 'warn');
+      else if (code === 'source') toast(t('play.needSource'), 'warn');
       else if (code === 'running') toast(t('play.alreadyRunning'), 'warn');
       else {
         showDialog({
@@ -1729,6 +1833,14 @@ function bindPlay() {
   };
 
   on('#playRefresh', () => loadDexnomStatus());
+  const forkSelect = $('#playForkSelect');
+  if (forkSelect) {
+    forkSelect.addEventListener('change', () => {
+      state.dexnom.log = [];
+      renderDexnomLog();
+      selectRuntimeFork(forkSelect.value);
+    });
+  }
   on('#playChooseSource', chooseDexnomSource);
   on('#playChooseGame', chooseDexnomGame);
   on('#playChooseInstall', chooseDexnomInstall);
@@ -2207,7 +2319,10 @@ function openView(view) {
     renderDownloads();
     if (!state.tracker && !state.trackerLoading) fetchRace();
     if (!state.forks.length && !state.forksLoading) fetchForks();
-    if (IS_DESKTOP) loadDownloads();
+    if (IS_DESKTOP) {
+      loadDownloads();
+      loadDexnomStatus();
+    }
   }
   if (view === 'about') renderAbout();
 
@@ -2529,6 +2644,7 @@ async function quickPlay() {
       const code = result && result.error;
       if (code === 'runtime') toast(t('play.needPrepare'), 'warn');
       else if (code === 'game') toast(t('play.needGame'), 'warn');
+      else if (code === 'source') toast(t('play.needSource'), 'warn');
       else if (code === 'running') toast(t('play.alreadyRunning'), 'warn');
       else if (code === 'saves') toast(t('saves.errBusy'), 'warn');
       else toast((result && result.detail) || t('play.launchFail'), 'bad', 5000);

@@ -1599,6 +1599,51 @@ body[data-view='downloads'] .sheet {
   color: rgba(255, 250, 252, 0.9);
 }
 
+.play-select {
+  width: 100%;
+  height: 30px;
+  margin: 2px 0 1px;
+  padding: 0 28px 0 9px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)),
+    #160b1e;
+  color: rgba(255, 250, 252, 0.92);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(255, 177, 194, 0.9) 50%),
+    linear-gradient(135deg, rgba(255, 177, 194, 0.9) 50%, transparent 50%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+  background-position:
+    calc(100% - 14px) 12px,
+    calc(100% - 9px) 12px,
+    0 0;
+  background-size:
+    5px 5px,
+    5px 5px,
+    100% 100%;
+  background-repeat: no-repeat;
+}
+
+.play-select:hover {
+  border-color: rgba(255, 177, 194, 0.4);
+}
+
+.play-select:focus-visible {
+  outline: 2px solid rgba(255, 107, 157, 0.55);
+  outline-offset: 1px;
+}
+
+.play-select:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .play-path {
   display: block;
   font-size: 9px;

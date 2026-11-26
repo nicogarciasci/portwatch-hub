@@ -22,7 +22,7 @@ Se o Windows SmartScreen avisar que o app não tem assinatura, clique em **Mais 
 - **Corrida ao vivo:** busca `data/tracker.json` do repositório oficial e aplica o mesmo modelo de pontuação do site (Groundwork → Exe runs → First frame → Main menu → In the world → Playable → Complete, com as trilhas story/render/performance/stability).
 - **Leaderboard completo:** projetos ranqueados, builds privadas, watchlist e projetos desativados, com filtros por alvo (GTA VI ou camadas gerais) e ordenação por progresso, estrelas ou atividade.
 - **Downloads integrados:** lista todos os projetos públicos do tracker e todos os forks do PortWatch, com busca, progresso e extração automática do ZIP. Ao baixar uma fork, o launcher pergunta em qual pasta você quer salvar.
-- **Jogar com DexNom:** prepara o runtime **DexNom** (fork do VIctory para AMD Radeon) e inicia o GTA VI com a sua cópia local do jogo, com botão **Jogar/Parar**, atalho **Executar** na tela inicial, pasta de instalação configurável, ray tracing opcional e log da preparação.
+- **Jogar com qualquer fork VIctory:** detecta as forks baixadas (DexNom, AvatarManz, Belobug, hyphennn e outras), escolhe o modo de preparação que cada uma traz (instalador, `scripts/play.ps1`, build Cargo ou executável pronto) e inicia o GTA VI com a sua cópia local do jogo, com botão **Jogar/Parar**, atalho **Executar** na tela inicial, ray tracing opcional e log por fork.
 - **Saves do jogo:** aba **Saves** ao lado de **Ajustes** para instalar um save em ZIP ou pasta, abrir a pasta do runtime, deletar com backup automático e restaurar qualquer um dos últimos 8 backups.
 - **Hardware:** detecta CPU, GPU, VRAM, RAM e armazenamento, permite simular outras peças e compara o PC com alvos de 1080p a 4K. Repertório com cerca de 75 GPUs e 60 CPUs em escala relativa.
 - **Temas:** **Vice City** (padrão) e **Los Santos**, com cenário, cores e rádio próprios.
@@ -81,9 +81,20 @@ A pasta padrão é `Downloads` dentro da pasta do launcher. Use **Escolher pasta
 
 Projetos grandes podem demorar. Se a API do GitHub limitar as requisições, preencha um **token do GitHub** em **Ajustes → Tracker** — ele é opcional e fica salvo apenas em `data\config.json`.
 
-## Jogar (DexNom)
+## Jogar (forks do VIctory)
 
-A aba **Jogar** integra o **DexNom Runtime**, fork do VIctory para placas AMD Radeon. O launcher **não baixa o jogo**: você aponta para o executável da sua própria cópia de GTA VI (Xbox Series X|S) e para a pasta da fork baixada na aba **Downloads**.
+A aba **Jogar** integra qualquer fork do **VIctory** baixada na aba **Downloads** — DexNom, AvatarManz, Belobug, hyphennn e outras. O launcher **não baixa o jogo**: você aponta para o executável da sua própria cópia de GTA VI (Xbox Series X|S) e escolhe a fork no seletor **Fork / runtime**. O DexNom continua disponível como uma das opções.
+
+**Como o launcher escolhe o modo de execução**
+
+| A fork traz | Estratégia | O que o launcher faz |
+| --- | --- | --- |
+| `Setup-*.ps1` | Instalador | Roda o setup com a pasta escolhida e abre o runtime instalado |
+| `scripts/play.ps1` | Script | Compila com Cargo (`--profile diag`) e inicia pelo script, com os ajustes da própria fork |
+| Só `Cargo.toml` | Compilação | Compila com Cargo e inicia `victory.exe` diretamente |
+| `victory.exe` ou `victory-play.exe` pronto | Executável | Inicia o binário direto, sem compilar |
+
+Forks de script e de compilação gravam dados e saves em `%LOCALAPPDATA%\victory\data` e cache em `%LOCALAPPDATA%\victory\cache`. Forks com instalador usam `<Pasta de instalação>\state` e `<Pasta de instalação>\cache`. O seletor mostra **Não preparado** até a fork ser compilada ou instalada.
 
 **Pré-requisitos para preparar o runtime**
 
@@ -91,20 +102,25 @@ A aba **Jogar** integra o **DexNom Runtime**, fork do VIctory para placas AMD Ra
 - Rust (rustup + Cargo): <https://rustup.rs/>.
 - Visual Studio Build Tools com a carga **Desenvolvimento para desktop com C++** e o **Windows SDK**. Se o Build Tools já estiver instalado em outro disco, o launcher detecta e usa essa instalação, inclusive quando o `vswhere` não a lista; se a detecção falhar, use **Localizar Build Tools**. Se faltar, o botão **Instalar Build Tools** baixa o instalador oficial da Microsoft, confere a assinatura digital, pede permissão de administrador (UAC) e instala a carga C++ com o Windows SDK. A instalação automática usa o C: e precisa de cerca de 6 GB livres no C:, mesmo que o runtime esteja em outro disco.
 - Pelo menos 5 GB livres no disco da fork.
-- GPU compatível com mesh shaders e Shader Model 6.6. O DexNom foi testado em Radeon RX 7900 XTX; placas mais antigas podem não rodar.
+- GPU compatível com mesh shaders e Shader Model 6.6. DexNom e AvatarManz foram testados em Radeon RX 7900 XTX; placas mais antigas podem não rodar.
 
 **Como usar**
 
-1. Baixe a fork DexNom na aba **Downloads** (ou escolha a pasta de uma cópia já extraída).
-2. Abra **Jogar** e confira se a fork e o executável do jogo foram detectados. Use **Escolher pasta** e **Escolher .exe** se precisar. A pasta de instalação padrão é `%LOCALAPPDATA%\DexNom Runtime`; use **Escolher pasta** na linha **Pasta de instalação** para instalar em outro disco ou pasta. Essa pasta é só do runtime: o Build Tools é detectado separadamente.
-3. Clique em **Preparar / atualizar**. O launcher roda o `Setup-DexNomRuntime.ps1` da fork com a pasta escolhida, mostra o log ao vivo e instala o runtime nessa pasta. Se o Build Tools não for detectado, use **Localizar Build Tools** para apontar uma instalação existente ou **Instalar Build Tools** para baixar; o andamento aparece na própria aba e o log fica em `data\logs\msvc-install.log`.
-4. Quando o runtime estiver pronto, clique em **Jogar**. O botão vira **Parar** enquanto o jogo estiver aberto. O ray tracing experimental pode ser ativado pelo interruptor `--rt`. Na tela inicial, **EXECUTAR** fica ao lado de **VER CORRIDA** e abre o jogo direto; se ainda faltar configuração, ele leva para esta aba.
+1. Baixe a fork na aba **Downloads** (o launcher seleciona a última baixada) ou escolha a pasta de uma cópia já extraída em **Jogar → Escolher pasta**. A pasta precisa conter `.victory-root`.
+2. Abra **Jogar**, escolha a fork no seletor **Fork / runtime** e confira o executável do jogo; use **Escolher .exe** se precisar. Em forks com instalador, a pasta padrão é `%LOCALAPPDATA%\<nome da fork> Runtime` e pode ser trocada em **Pasta de instalação**. Em forks de script ou compilação, a linha vira **Dados e saves** e mostra `%LOCALAPPDATA%\victory\data`.
+3. Clique em **Preparar / atualizar** (ou **Compilar / atualizar**). O launcher roda o `Setup-*.ps1` da fork ou `cargo build --locked --profile diag -p victory --features diagnostics`, mostra o log ao vivo e libera o botão quando o runtime fica pronto. Se o Build Tools não for detectado, use **Localizar Build Tools** ou **Instalar Build Tools**; o andamento aparece na própria aba e o log fica em `data\logs\msvc-install.log`.
+4. Clique em **Jogar**. O botão vira **Parar** enquanto o jogo estiver aberto. O ray tracing experimental é ativado pelo interruptor e é passado como `--rt` para instalador/executável ou `-RayTracing` para forks de script. Na tela inicial, **EXECUTAR** fica ao lado de **VER CORRIDA** e abre o jogo com a fork selecionada; se ainda faltar configuração, ele leva para esta aba.
 
-O log da preparação fica em `data\logs\dexnom-setup.log`. A fork é código de terceiros: compilar e executar roda código no seu PC. Use apenas com uma cópia legal do jogo.
+O log da preparação fica em `data\logs\<fork>-setup.log` (o DexNom mantém `data\logs\dexnom-setup.log`). A fork é código de terceiros: compilar e executar roda código no seu PC. Use apenas com uma cópia legal do jogo.
 
 ## Saves do jogo
 
-A aba **Saves**, ao lado de **Ajustes**, gerencia os saves que o runtime DexNom usa. Eles **não** ficam na pasta do jogo: o runtime grava em `<Pasta de instalação>\state\<TitleId>\saves`, com uma pasta por usuário (XUID) e uma pasta `default` de configuração.
+A aba **Saves**, ao lado de **Ajustes**, gerencia os saves do runtime selecionado na aba **Jogar**. Eles **não** ficam na pasta do jogo:
+
+- forks com instalador gravam em `<Pasta de instalação>\state\<TitleId>\saves`;
+- forks de script ou compilação gravam em `%LOCALAPPDATA%\victory\data\<TitleId>\saves`.
+
+Em ambos os casos há uma pasta por usuário (XUID) e uma pasta `default` de configuração. Trocar a fork na aba **Jogar** troca a pasta de saves mostrada aqui; os saves não são migrados automaticamente entre runtimes.
 
 **Instalar:** clique em **Instalar save** para escolher um ZIP ou em **Pasta…** para escolher uma pasta. O launcher aceita:
 
@@ -116,7 +132,7 @@ Antes de substituir, o launcher cria um **backup automático** dos saves atuais.
 
 **Deletar:** remove os saves instalados, movendo tudo para um backup antes. O jogo precisa estar fechado.
 
-**Backups:** até 8 backups são mantidos em `<Pasta de instalação>\state\<TitleId>\saves-backups`. Use **Restaurar** em qualquer backup; os saves atuais são copiados para um novo backup antes da restauração. Também dá para abrir a pasta de backups no Explorer.
+**Backups:** até 8 backups são mantidos em `<TitleId>\saves-backups`, ao lado da pasta de saves. Use **Restaurar** em qualquer backup; os saves atuais são copiados para um novo backup antes da restauração. Também dá para abrir a pasta de backups no Explorer.
 
 O limite é o mesmo do runtime: **256 MB** por save e até 20.000 arquivos. O ZIP é validado contra entradas com `..` ou caminhos absolutos antes de extrair. O launcher não baixa saves da internet; você escolhe o arquivo ou a pasta no seu PC.
 
@@ -176,15 +192,15 @@ PortWatch Hub/
   INICIAR.cmd        inicializador: confere o Node, instala dependências e abre
   CRIAR-ATALHO.cmd   cria o atalho na área de trabalho
   ABRIR-LAUNCHER.vbs abre sem janela de console
-  main.js            processo principal (janela, IPC, tracker, forks, downloads, DexNom)
+  main.js            processo principal (janela, IPC, tracker, forks, downloads, runtimes)
   hardware-main.js   detecção de hardware isolada
   preload.js         ponte segura para o renderer (window.portwatch)
   preview.js         servidor de preview com proxies do tracker e forks
   app/
     index.html       marcação da interface
     styles.css       cena, vidro, tipografia e animações
-    portwatch.css    identidade PortWatch, corrida, downloads, DexNom e tema Los Santos
-    app.js           estado, corrida, downloads, DexNom, ajustes, idioma e navegação
+    portwatch.css    identidade PortWatch, corrida, downloads, runtimes e tema Los Santos
+    app.js           estado, corrida, downloads, runtimes, ajustes, idioma e navegação
     radio.js         sintetizador das estações
     hardware.js      interface e cálculo do verificador de hardware
     scene.js         estrelas, skyline, parallax e relógio
@@ -196,7 +212,7 @@ PortWatch Hub/
     make-shortcut.ps1 cria o atalho da área de trabalho
     ...              captura de tela, teste via CDP e gerador de ícone
   data/config.json   preferências salvas (criado em tempo de execução)
-  data/logs/         log da preparação do DexNom (criado em tempo de execução)
+  data/logs/         logs de preparação por fork (criados em tempo de execução)
 ```
 
 O ícone da janela e do atalho é `app\assets\icon.ico`. Para trocar, substitua `icon.png` e rode `npm run icon`; o script gera um ICO com tamanhos de 16 a 256 px. O `CRIAR-ATALHO.cmd` usa esse ícone.
@@ -215,13 +231,16 @@ O ícone da janela e do atalho é `app\assets\icon.ico`. Para trocar, substitua 
 - **Lista de forks vazia:** a API do GitHub pode ter atingido o limite. Preencha um token em **Ajustes → Tracker** e atualize.
 - **Download falhou:** confira a conexão e o espaço em disco. O detalhe do erro aparece no diálogo.
 - **O ZIP não extraiu:** feche o arquivo no Explorer e tente de novo; o download é mantido na pasta de downloads.
-- **“Faltam pré-requisitos” ao preparar o DexNom:** instale o Rust e o Visual Studio Build Tools com a carga C++ e o Windows SDK; clique em **Verificar** depois. Se o Build Tools já existe, use **Localizar Build Tools** e escolha a pasta que contém `VC\Tools\MSVC`. Para a instalação automática, use **Instalar Build Tools** ou o comando `winget` sugerido na tela. Se a instalação automática terminar sem detectar o Build Tools, reinicie o Windows e use **Verificar** de novo.
+- **“Faltam pré-requisitos” ao preparar uma fork:** instale o Rust e o Visual Studio Build Tools com a carga C++ e o Windows SDK; clique em **Verificar** depois. Se o Build Tools já existe, use **Localizar Build Tools** e escolha a pasta que contém `VC\Tools\MSVC`. Para a instalação automática, use **Instalar Build Tools** ou o comando `winget` sugerido na tela. Se a instalação automática terminar sem detectar o Build Tools, reinicie o Windows e use **Verificar** de novo.
 - **Build Tools instalado em outro disco mas não detectado:** use **Localizar Build Tools** e aponte a pasta da instalação (por exemplo, `D:\VSBuildTools`). O launcher passa a usar o `vcvars64.bat` dessa instalação, sem baixar nada. Isso também funciona quando o `vswhere` não lista a instalação.
 - **A instalação do Build Tools falhou:** abra o log em `data\logs\msvc-install.log` e confira a conexão, o espaço livre (cerca de 6 GB no C:) e se a janela do UAC foi aceita. O instalador oficial também pode ser aberto manualmente pelo botão **Abrir Build Tools**.
-- **O save instalado não aparece no jogo:** confirme que o jogo está fechado, que a **Pasta de instalação** em **Jogar** é a mesma usada pelo save e que o `TitleId` mostrado na aba **Saves** é o do seu `MicrosoftGame.Config`. O caminho completo aparece na linha **Pasta de saves**; use **Abrir** para conferir.
+- **O save instalado não aparece no jogo:** confirme que o jogo está fechado, que o runtime selecionado em **Jogar** é o mesmo usado pelo save e que o `TitleId` mostrado na aba **Saves** é o do seu `MicrosoftGame.Config`. O caminho completo aparece na linha **Pasta de saves**; use **Abrir** para conferir.
 - **O ZIP do save foi recusado:** o launcher bloqueia ZIPs com caminhos `..`, caminhos absolutos, mais de 256 MB ou mais de 20.000 arquivos. Recompacte o save a partir da pasta de configuração (`default`) ou da pasta do usuário (16 dígitos).
 - **Deletei o save por engano:** abra a aba **Saves**, localize o backup na lista (por exemplo, “Antes de deletar”) e clique em **Restaurar**. O launcher guarda os últimos 8 backups.
-- **O DexNom não inicia o jogo:** confirme que o runtime foi preparado, que o `.exe` apontado é o da instalação correta e que a GPU suporta mesh shaders/Shader Model 6.6. Veja o log em `data\logs\dexnom-setup.log` e os diagnósticos do runtime em `%LOCALAPPDATA%\DexNom Runtime\logs`.
+- **A fork não aparece no seletor:** a pasta precisa conter `.victory-root` (ou uma subpasta direta com ele). Use **Escolher pasta** em **Jogar** e clique em **Verificar**. Forks baixadas em `Downloads` são detectadas automaticamente.
+- **A compilação da fork falhou:** abra o log em `data\logs\<fork>-setup.log`. Confira se o Rust e o Build Tools estão instalados, se há pelo menos 5 GB livres e se a fork tem `Cargo.toml` com o perfil `diag` e a feature `diagnostics`.
+- **O botão Jogar está desabilitado:** selecione a fork, confirme o executável do jogo e clique em **Preparar / atualizar** (ou **Compilar / atualizar**). O botão libera quando o runtime fica pronto.
+- **O runtime não inicia o jogo:** confirme que a fork foi preparada, que o `.exe` apontado é o da instalação correta e que a GPU suporta mesh shaders/Shader Model 6.6. Veja o log em `data\logs\<fork>-setup.log`; no DexNom, os diagnósticos ficam em `%LOCALAPPDATA%\DexNom Runtime\logs`.
 - **O launcher não abre:** rode `INICIAR.cmd`; ele mostra o que falta (Node.js, npm ou dependências) e tenta instalar. Se o atalho estiver apontando para uma pasta antiga, rode `CRIAR-ATALHO.cmd` de novo.
 
 ---
